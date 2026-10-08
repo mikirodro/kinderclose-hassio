@@ -1,5 +1,7 @@
 # KinderClose → Home Assistant
 
+![KinderClose](custom_components/kinderclose/brand/logo.png)
+
 ## Instalación nativa con HACS (recomendada)
 
 La integración se ejecuta dentro de Home Assistant y crea once sensores registrados, agrupados en un dispositivo por alumno. **No solicita URL ni token de Home Assistant**, no usa `.env` y no necesita Docker. Solo requiere las credenciales de KinderClose y el ID del alumno o su nombre completo. Consulta las últimas cinco fichas cada 15 minutos.
@@ -10,6 +12,8 @@ La integración se ejecuta dentro de Home Assistant y crea once sensores registr
 4. Introduce el correo y contraseña de KinderClose y el ID del alumno (recomendado). Si no conoces el ID, indica su nombre completo tal como aparece en la web.
 
 Estos pasos requieren que los cambios de este proyecto estén publicados en GitHub. HACS instala el código; la conexión se configura después en Home Assistant. No es necesario que el repositorio esté incluido en el catálogo predeterminado de HACS.
+
+El logo y el icono se incluyen en `custom_components/kinderclose/brand/`, tanto para la integración como para HACS. Home Assistant **2026.3 o posterior** admite estas imágenes locales; versiones anteriores pueden mostrar un icono genérico. Utiliza una versión actualizada de HACS para que reconozca las imágenes del repositorio. Después de publicar los cambios, vuelve a descargar o actualizar la integración en HACS y reinicia Home Assistant; si sigue apareciendo el icono anterior, recarga el navegador. Véanse las instrucciones oficiales de [imágenes de Home Assistant](https://developers.home-assistant.io/docs/core/integration/brand_images/) y [recursos de marca en HACS](https://www.hacs.xyz/docs/publish/integration/#brand-assets).
 
 También puedes copiar `custom_components/kinderclose` a `/config/custom_components/kinderclose` y reiniciar Home Assistant. Los sensores conservan identificadores únicos entre reinicios. Puedes añadir varios alumnos repitiendo la configuración. Si KinderClose rechaza las credenciales, Home Assistant solicita reautenticación. Si falla una actualización, los sensores se marcan como no disponibles y se reintenta automáticamente. Si el alumno todavía no tiene fichas, la configuración lo indica y no crea la entrada.
 
