@@ -2,3 +2,7 @@
 !requirements.txt
 !kinderclose.py
 !Dockerfile
+!custom_components/
+!custom_components/kinderclose/
+!custom_components/kinderclose/__init__.py
+!custom_components/kinderclose/client.py

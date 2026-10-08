@@ -1,5 +1,24 @@
 # KinderClose → Home Assistant
 
+## Instalación nativa con HACS (recomendada)
+
+La integración se ejecuta dentro de Home Assistant y crea once sensores registrados, agrupados en un dispositivo por alumno. **No solicita URL ni token de Home Assistant**, no usa `.env` y no necesita Docker. Solo requiere las credenciales de KinderClose y el ID del alumno o su nombre completo. Consulta las últimas cinco fichas cada 15 minutos.
+
+1. En HACS, abre el menú de **Repositorios personalizados** y añade `https://github.com/mikirodro/kinderclose-hassio` con categoría **Integración**.
+2. Busca KinderClose en HACS, descárgalo y reinicia Home Assistant.
+3. Abre **Ajustes → Dispositivos y servicios → Añadir integración → KinderClose**.
+4. Introduce el correo y contraseña de KinderClose y el ID del alumno (recomendado). Si no conoces el ID, indica su nombre completo tal como aparece en la web.
+
+Estos pasos requieren que los cambios de este proyecto estén publicados en GitHub. HACS instala el código; la conexión se configura después en Home Assistant. No es necesario que el repositorio esté incluido en el catálogo predeterminado de HACS.
+
+También puedes copiar `custom_components/kinderclose` a `/config/custom_components/kinderclose` y reiniciar Home Assistant. Los sensores conservan identificadores únicos entre reinicios. Puedes añadir varios alumnos repitiendo la configuración. Si KinderClose rechaza las credenciales, Home Assistant solicita reautenticación. Si falla una actualización, los sensores se marcan como no disponibles y se reintenta automáticamente. Si el alumno todavía no tiene fichas, la configuración lo indica y no crea la entrada.
+
+Las credenciales se guardan en la configuración interna de Home Assistant. No es necesario copiarlas al repositorio. Si ya utilizabas el script externo, detén su ejecución antes de configurar la integración para evitar que ambos publiquen sobre los mismos sensores. Los sensores existentes creados por REST no se migran al registro de entidades; comprueba los identificadores finales en Dispositivos y servicios al cambiar de método.
+
+Los sufijos y atributos de sensores se describen abajo. En el modo HACS sí se registran como entidades de la integración y pertenecen a un dispositivo; las limitaciones de la API REST descritas más adelante solo aplican al script externo.
+
+## Alternativa: script externo con API REST
+
 Extrae las últimas cinco fichas del alumno configurado y publica once sensores en Home Assistant. Usa el formulario web de KinderClose, con cookies de sesión y token CSRF; no necesita navegador. No modifica fichas ni envía mensajes en KinderClose.
 
 ## Configuración

@@ -1,0 +1,34 @@
+{
+  "title": "KinderClose",
+  "config": {
+    "step": {
+      "user": {
+        "title": "Conectar con KinderClose",
+        "description": "Introduce tus credenciales de KinderClose y el ID del alumno o su nombre completo. No necesitas URL ni token de Home Assistant.",
+        "data": {
+          "username": "Correo de KinderClose",
+          "password": "Contraseña de KinderClose",
+          "pupil_id": "ID del alumno (recomendado)",
+          "pupil_name": "Nombre completo del alumno (si no indicas ID)"
+        }
+      },
+      "reauth_confirm": {
+        "title": "Actualizar credenciales",
+        "description": "Vuelve a introducir las credenciales de KinderClose.",
+        "data": {
+          "username": "Correo de KinderClose",
+          "password": "Contraseña de KinderClose"
+        }
+      }
+    },
+    "error": {
+      "invalid_auth": "Usuario o contraseña de KinderClose incorrectos.",
+      "cannot_connect": "No se puede conectar con KinderClose.",
+      "invalid_pupil": "No se encuentra el alumno o no tiene fichas. Comprueba el ID o el nombre completo."
+    },
+    "abort": {
+      "already_configured": "Este alumno ya está configurado.",
+      "reauth_successful": "Credenciales actualizadas."
+    }
+  }
+}

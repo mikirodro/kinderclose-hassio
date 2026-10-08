@@ -1,0 +1,34 @@
+{
+  "title": "KinderClose",
+  "config": {
+    "step": {
+      "user": {
+        "title": "Connect to KinderClose",
+        "description": "Enter KinderClose credentials and a pupil ID or full name. No Home Assistant URL or token is needed.",
+        "data": {
+          "username": "KinderClose email",
+          "password": "KinderClose password",
+          "pupil_id": "Pupil ID (recommended)",
+          "pupil_name": "Full pupil name (if no ID is provided)"
+        }
+      },
+      "reauth_confirm": {
+        "title": "Update credentials",
+        "description": "Enter your KinderClose credentials again.",
+        "data": {
+          "username": "KinderClose email",
+          "password": "KinderClose password"
+        }
+      }
+    },
+    "error": {
+      "invalid_auth": "Invalid KinderClose credentials.",
+      "cannot_connect": "Unable to connect to KinderClose.",
+      "invalid_pupil": "Pupil not found or no records available. Check the ID or full name."
+    },
+    "abort": {
+      "already_configured": "This pupil is already configured.",
+      "reauth_successful": "Credentials updated."
+    }
+  }
+}
