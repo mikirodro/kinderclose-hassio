@@ -17,14 +17,18 @@ class KinderCloseCoordinator(DataUpdateCoordinator):
     def __init__(self, hass, entry):
         super().__init__(hass, LOGGER, name=DOMAIN, config_entry=entry, update_interval=timedelta(minutes=15))
         self.entry = entry
+        # Cliente persistente: la sesión se reutiliza entre actualizaciones y solo
+        # se vuelve a iniciar sesión cuando KinderClose la invalida.
+        # Crear el objeto no hace E/S; todas las peticiones HTTP van al executor.
+        data = entry.data
+        self.client = KinderClose(data[CONF_USERNAME], data[CONF_PASSWORD], data[CONF_PUPIL_ID])
+
+    async def async_close(self):
+        await self.hass.async_add_executor_job(self.client.close)
 
     async def _async_update_data(self):
-        data = self.entry.data
         try:
-            # La sesión y todas las operaciones HTTP se crean dentro del executor.
-            return await self.hass.async_add_executor_job(
-                lambda: KinderClose(data[CONF_USERNAME], data[CONF_PASSWORD], data[CONF_PUPIL_ID]).fetch()
-            )
+            return await self.hass.async_add_executor_job(self.client.fetch)
         except AuthenticationError as error:
             raise ConfigEntryAuthFailed("KinderClose ha rechazado las credenciales") from error
         except requests.RequestException as error:
