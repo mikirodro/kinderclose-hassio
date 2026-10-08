@@ -61,15 +61,19 @@ def main():
     args = parser.parse_args()
     load_dotenv(args.env_file)
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+    client = None
     try:
         interval = int(os.getenv("POLL_INTERVAL_SECONDS", "900"))
         if interval < 60:
             raise ValueError("POLL_INTERVAL_SECONDS debe ser al menos 60.")
         if not args.dry_run and (not os.getenv("HOMEASSISTANT_URL") or not os.getenv("HOMEASSISTANT_TOKEN")):
             raise ValueError("Configura HOMEASSISTANT_URL y HOMEASSISTANT_TOKEN, o usa --dry-run.")
+        # Un único cliente: en modo --watch se reutiliza la sesión y solo se vuelve
+        # a iniciar sesión cuando KinderClose la invalida.
+        client = KinderClose(os.getenv("KINDERCLOSE_USER"), os.getenv("KINDERCLOSE_PASSWORD"), os.getenv("KINDERCLOSE_ALUMNO_ID", ""), os.getenv("KINDERCLOSE_ALUMNO", ""))
         while True:
             try:
-                data = KinderClose(os.getenv("KINDERCLOSE_USER"), os.getenv("KINDERCLOSE_PASSWORD"), os.getenv("KINDERCLOSE_ALUMNO_ID", ""), os.getenv("KINDERCLOSE_ALUMNO", "")).fetch(args.limit, args.date.isoformat() if args.date else None)
+                data = client.fetch(args.limit, args.date.isoformat() if args.date else None)
                 if args.dry_run:
                     print(json.dumps(data, ensure_ascii=False, indent=2))
                 else:
@@ -88,6 +92,9 @@ def main():
         return 1
     except KeyboardInterrupt:
         return 0
+    finally:
+        if client is not None:
+            client.close()
 
 
 if __name__ == "__main__":

@@ -10,6 +10,13 @@ from .client import AuthenticationError, KinderClose
 from .const import CONF_PUPIL_ID, CONF_PUPIL_NAME, DOMAIN
 
 
+
+def _validate(user, password, pupil_id="", pupil_name=""):
+    """Comprueba credenciales con una consulta mínima y cierra siempre la sesión."""
+    with KinderClose(user, password, pupil_id, pupil_name) as client:
+        return client.fetch(limit=1)
+
+
 class KinderCloseConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     VERSION = 1
 
@@ -18,7 +25,7 @@ class KinderCloseConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         if user_input is not None:
             try:
                 result = await self.hass.async_add_executor_job(
-                    lambda: KinderClose(user_input[CONF_USERNAME], user_input[CONF_PASSWORD], user_input.get(CONF_PUPIL_ID, ""), user_input.get(CONF_PUPIL_NAME, "")).fetch(limit=1)
+                    _validate, user_input[CONF_USERNAME], user_input[CONF_PASSWORD], user_input.get(CONF_PUPIL_ID, ""), user_input.get(CONF_PUPIL_NAME, "")
                 )
             except AuthenticationError:
                 errors["base"] = "invalid_auth"
@@ -52,7 +59,7 @@ class KinderCloseConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             data = {**entry.data, **user_input}
             try:
                 await self.hass.async_add_executor_job(
-                    lambda: KinderClose(data[CONF_USERNAME], data[CONF_PASSWORD], data[CONF_PUPIL_ID]).fetch(limit=1)
+                    _validate, data[CONF_USERNAME], data[CONF_PASSWORD], data[CONF_PUPIL_ID]
                 )
             except AuthenticationError:
                 errors["base"] = "invalid_auth"
