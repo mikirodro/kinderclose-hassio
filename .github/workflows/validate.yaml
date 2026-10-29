@@ -29,4 +29,4 @@ jobs:
           persist-credentials: false
       # Home Assistant solo publica hassfest en la rama master: se fija el commit
       # revisado en lugar de seguir la rama. Actualizar manualmente de vez en cuando.
-      - uses: home-assistant/actions/hassfest@06749dd8c0b54f350bc69c8752456cee498808a3 # master 2026-10-08
+      - uses: home-assistant/actions/hassfest@86d4564712fa02543c808e3a693dd04f9d3f8361 # master 2026-10-08
