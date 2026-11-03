@@ -139,7 +139,7 @@ class KinderClose:
     def login(self):
         user, password = self.user, self.password
         if not user or not password:
-            raise ValueError("Faltan KINDERCLOSE_USER o KINDERCLOSE_PASSWORD.")
+            raise ValueError("Faltan el usuario o la contraseña de KinderClose.")
         # Sesión limpia: no reutilizar cookies de una sesión caducada.
         self.session.cookies.clear()
         self.logged_in = False
@@ -176,7 +176,7 @@ class KinderClose:
             name = normalize(self.pupil_name)
             matches = [key for key, names in pupils.items() if name and any(normalize(n) == name for n in names)]
             if len(matches) != 1:
-                raise ValueError("El nombre no identifica un único alumno. Configura KINDERCLOSE_ALUMNO_ID.")
+                raise ValueError("El nombre no identifica un único alumno. Configura el ID del alumno.")
             pupil_id = matches[0]
         if pupil_id not in pupils:
             raise ValueError("El alumno configurado no aparece en esta cuenta.")

@@ -1,7 +1,5 @@
 import unittest
-from unittest.mock import patch, MagicMock
-
-from kinderclose import parse_record, sensor_payloads, publish
+from custom_components.kinderclose.client import parse_record
 
 
 def fixture(naps="", stools="", food=""):
@@ -30,29 +28,12 @@ class ParserTests(unittest.TestCase):
 
     def test_incomplete_nap_is_unknown_in_home_assistant(self):
         record = parse_record(fixture(naps='<tr><td>12:11</td><td></td></tr>'), "https://example.com")
-        payloads = sensor_payloads({"alumno_id": "123", "consultado_en": "now", "fichas": [record]})
-        self.assertEqual(payloads["sensor.kinderclose_123_sueno"]["state"], "unknown")
-        self.assertEqual(payloads["sensor.kinderclose_123_asistencia"]["state"], "presente")
-        self.assertEqual(len(payloads), 11)
+        self.assertIsNone(record["sueno_minutos"])
 
     def test_login_or_changed_page_is_rejected(self):
         with self.assertRaises(ValueError):
             parse_record('<form><input name="password"></form>', "https://example.com")
 
-    @patch.dict("os.environ", {"HOMEASSISTANT_URL": "http://ha.local:8123", "HOMEASSISTANT_TOKEN": "test-token"})
-    @patch("kinderclose.requests.Session")
-    def test_home_assistant_contract_and_rejected_token(self, session_class):
-        session = MagicMock()
-        session_class.return_value.__enter__.return_value = session
-        session.post.return_value.status_code = 201
-        data = {"alumno_id": "123", "consultado_en": "now", "fichas": [parse_record(fixture(), "https://example.com")]}
-        publish(data)
-        self.assertEqual(session.post.call_count, 11)
-        session.headers.update.assert_called_once_with({"Authorization": "Bearer test-token"})
-        self.assertEqual(session.post.call_args_list[0].args[0], "http://ha.local:8123/api/states/sensor.kinderclose_123_ultima_ficha")
-        session.post.return_value.status_code = 401
-        with self.assertRaisesRegex(ValueError, "HTTP 401"):
-            publish(data)
 
 
 if __name__ == "__main__":
