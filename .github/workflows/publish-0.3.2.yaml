@@ -1,0 +1,28 @@
+name: Publish 0.3.2 release
+on:
+  push:
+    branches: [main]
+    paths: [".github/workflows/publish-0.3.2.yaml"]
+permissions:
+  contents: write
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Publish validated integration version
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create 0.3.2 --repo "$GITHUB_REPOSITORY" --target 9ca688a6be35b4dbf835332459b206ee20a96296 --latest --title "KinderClose 0.3.2" --notes-file - <<'NOTES'
+          ## Cambio importante
+          El proyecto se centra en la integración nativa de Home Assistant. Se han retirado el script REST externo, el contenedor Docker y sus archivos de configuración.
+
+          Si usabas el script o Docker, configura primero la integración nativa y revisa los identificadores en tus tarjetas y automatizaciones. Los sensores REST no se migran automáticamente.
+
+          ## Mejoras
+          - Se conservan los sensores de la integración y las pruebas del cliente y del análisis de fichas.
+          - Se actualizan la documentación y los mensajes de configuración.
+          - Las pruebas unitarias y hassfest han pasado en el PR de esta versión.
+
+          Después de actualizar mediante HACS, reinicia Home Assistant.
+          NOTES
