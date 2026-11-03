@@ -1,3 +1,3 @@
-requests>=2.34.2,<3
+# Dependencias para ejecutar las pruebas del cliente fuera de Home Assistant.
 beautifulsoup4>=4.15.0,<5
-python-dotenv>=1.2.4,<2
+requests>=2.34.2,<3
