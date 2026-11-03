@@ -36,3 +36,9 @@ python3 -m venv .venv
 ```
 
 El archivo `requirements.txt` contiene dependencias para las pruebas fuera de Home Assistant; la integración declara sus propios requisitos en el manifiesto.
+
+## Seguridad, contribuciones y licencia
+
+- [Comunicar vulnerabilidades de forma privada](SECURITY.md).
+- [Guía para contribuir](CONTRIBUTING.md).
+- [Licencia MIT](LICENSE).
