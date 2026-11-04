@@ -1,14 +1,14 @@
 """Configuración mediante la interfaz de Home Assistant."""
 import logging
 
-import requests
 import voluptuous as vol
 
 from homeassistant import config_entries
 from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
 from homeassistant.helpers import selector
 
-from .client import AuthenticationError, KinderClose, NoRecords, PupilNotFound
+from .account import create_client
+from .client import AuthenticationError, CannotConnect, NoRecords, PupilNotFound
 from .const import CONF_PUPIL_ID, CONF_PUPIL_NAME, DOMAIN
 
 LOGGER = logging.getLogger(__name__)
@@ -16,22 +16,22 @@ LOGGER = logging.getLogger(__name__)
 PASSWORD_SELECTOR = selector.TextSelector(selector.TextSelectorConfig(type=selector.TextSelectorType.PASSWORD))
 
 
-def _validate(user, password, pupil_id="", pupil_name=""):
+async def _validate(hass, user, password, pupil_id="", pupil_name=""):
     """Comprueba credenciales con una consulta mínima y cierra siempre la sesión."""
-    with KinderClose(user, password, pupil_id, pupil_name) as client:
-        return client.fetch(limit=1)
+    async with create_client(hass, user, password) as client:
+        return await client.fetch(pupil_id, pupil_name, limit=1)
 
 
 class KinderCloseConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     VERSION = 1
 
     async def _async_validate(self, errors, *args):
-        """Valida en el executor y traduce las excepciones a errores del formulario."""
+        """Valida con KinderClose y traduce las excepciones a errores del formulario."""
         try:
-            return await self.hass.async_add_executor_job(_validate, *args)
+            return await _validate(self.hass, *args)
         except AuthenticationError:
             errors["base"] = "invalid_auth"
-        except requests.RequestException:
+        except CannotConnect:
             errors["base"] = "cannot_connect"
         except PupilNotFound:
             errors["base"] = "invalid_pupil"

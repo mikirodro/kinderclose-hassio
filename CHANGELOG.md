@@ -2,6 +2,16 @@
 
 Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/). La sección de cada versión se usa como notas de la release de GitHub.
 
+## [0.5.0]
+
+### Cambios
+
+- El cliente usa `aiohttp` de forma asíncrona, como recomienda Home Assistant, en lugar de `requests` en hilos del executor.
+- Los alumnos configurados con la misma cuenta (mismo correo y contraseña) comparten una sola sesión y un solo inicio de sesión. Si caduca, se renueva una única vez aunque varios alumnos se actualicen a la vez.
+- La fecha de la ficha es más fiable: se toma del calendario de la página; si no existe, de la única fecha de los encabezados y, si tampoco, de la única fecha del texto. Se entienden los formatos `2026-10-07` y `7/10/2026`. Si hay varias fechas posibles (por ejemplo, la de nacimiento), la actualización falla con un error claro en lugar de mostrar una fecha equivocada.
+
+No cambian los sensores, sus identificadores ni sus atributos.
+
 ## [0.4.0]
 
 ### Privacidad

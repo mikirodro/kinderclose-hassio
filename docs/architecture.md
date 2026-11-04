@@ -12,7 +12,7 @@ flowchart LR
     Sensors --> Recorder[Historial y copias según configuración de HA]
 ```
 
-El flujo de configuración comprueba las credenciales y resuelve el alumno. El coordinador consulta cada 15 minutos en un executor, para no bloquear el bucle de Home Assistant. El cliente reutiliza una sesión HTTP por entrada, vuelve a autenticarse una vez si caduca y la cierra al descargar la integración. Las redirecciones se limitan al mismo origen HTTPS.
+El flujo de configuración comprueba las credenciales y resuelve el alumno. El coordinador consulta cada 15 minutos con un cliente `aiohttp` asíncrono, sin bloquear el bucle de Home Assistant. Las entradas con la misma cuenta comparten cliente, sesión e inicio de sesión (`account.py`); un candado evita inicios de sesión simultáneos y, si la sesión caduca, se renueva una sola vez. La sesión tiene sus propias cookies, separadas de la sesión compartida de Home Assistant, y se cierra cuando se descarga la última entrada que la usa. Las redirecciones se limitan al mismo origen HTTPS.
 
 La fuente es HTML de la web de KinderClose, no una API pública documentada. Los cambios de la web pueden romper la extracción; el parser rechaza páginas sin los paneles esenciales. Las pruebas usan respuestas simuladas, no verifican la web real.
 
@@ -25,7 +25,7 @@ El cliente obtiene los enlaces de fichas del perfil, elimina duplicados y consul
 | `alumno_id` | Identificador del alumno, también usado en el dispositivo y los identificadores de entidades. |
 | `consultado_en` | Momento de consulta en UTC, en ISO 8601. |
 | `fichas` | Lista no vacía de fichas consultadas, ordenadas por fecha descendente. |
-| `fecha`, `url` | Fecha ISO de la ficha y enlace de origen. No representan necesariamente el día actual. |
+| `fecha`, `url` | Fecha ISO de la ficha y enlace de origen. No representan necesariamente el día actual. La fecha sale del `defaultDate` del calendario, o de la única fecha de los encabezados, o de la única fecha del texto; si es ambigua, la ficha se rechaza. |
 | `presencia`, `comidas` | Valores de texto extraídos de los paneles; los campos vacíos o `--` se normalizan a `null`. |
 | `sueno` | Sesiones con `desde` y `hasta`; si faltan horas, pueden ser `null`. |
 | `sueno_minutos` | Suma de sesiones completas en minutos; `null` si no hay sesiones o alguna está incompleta. Se admite el cruce de medianoche. |
