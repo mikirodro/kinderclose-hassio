@@ -1,0 +1,23 @@
+name: Publish 0.3.4 release
+on:
+  push:
+    branches: [main]
+    paths: [".github/workflows/publish-0.3.4.yaml"]
+permissions:
+  contents: write
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Publish validated integration version
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create 0.3.4 --repo "$GITHUB_REPOSITORY" --target 8b75512984af71e456a0c9c7a6a7e277d39b9f0d --latest --title "KinderClose 0.3.4" --notes-file - <<'NOTES'
+          ## Cambios
+          - Documenta la arquitectura, el flujo y el contrato de datos, la privacidad y el mantenimiento.
+          - Aclara cómo se seleccionan las fichas consultadas.
+          - No cambia el funcionamiento de los sensores.
+
+          Las pruebas unitarias y hassfest han pasado. Después de actualizar mediante HACS, reinicia Home Assistant.
+          NOTES
