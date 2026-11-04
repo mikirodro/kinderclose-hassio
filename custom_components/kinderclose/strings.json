@@ -24,11 +24,50 @@
     "error": {
       "invalid_auth": "Invalid KinderClose credentials.",
       "cannot_connect": "Unable to connect to KinderClose.",
-      "invalid_pupil": "Pupil not found or no records available. Check the ID or full name."
+      "invalid_pupil": "Pupil not found in this account. Check the ID or full name.",
+      "no_records": "The pupil has no records yet. Try again once the school has published one.",
+      "unknown": "Unexpected error. Check the Home Assistant log."
     },
     "abort": {
       "already_configured": "This pupil is already configured.",
       "reauth_successful": "Credentials updated."
+    }
+  },
+  "entity": {
+    "sensor": {
+      "ultima_ficha": {
+        "name": "Latest record"
+      },
+      "asistencia": {
+        "name": "Attendance"
+      },
+      "entrada": {
+        "name": "Check-in"
+      },
+      "salida": {
+        "name": "Check-out"
+      },
+      "desayuno": {
+        "name": "Breakfast"
+      },
+      "primero": {
+        "name": "First course"
+      },
+      "segundo": {
+        "name": "Second course"
+      },
+      "postre": {
+        "name": "Dessert"
+      },
+      "merienda": {
+        "name": "Afternoon snack"
+      },
+      "sueno": {
+        "name": "Sleep"
+      },
+      "deposiciones": {
+        "name": "Bowel movements"
+      }
     }
   }
 }

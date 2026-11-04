@@ -9,27 +9,34 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import CONF_PUPIL_ID, DOMAIN
 
-SENSORS = {
-    "ultima_ficha": "Última ficha", "asistencia": "Asistencia",
-    "entrada": "Entrada", "salida": "Salida", "desayuno": "Desayuno",
-    "primero": "Primero", "segundo": "Segundo", "postre": "Postre",
-    "merienda": "Merienda", "sueno": "Sueño", "deposiciones": "Deposiciones",
-}
+# Los nombres visibles están en strings.json y translations/, bajo entity.sensor.<clave>.
+SENSORS = (
+    "ultima_ficha", "asistencia", "entrada", "salida", "desayuno", "primero",
+    "segundo", "postre", "merienda", "sueno", "deposiciones",
+)
+
+# Solo el coordinador consulta KinderClose; las entidades no hacen E/S propia.
+PARALLEL_UPDATES = 0
 
 
 async def async_setup_entry(hass, entry, async_add_entities):
-    async_add_entities(KinderCloseSensor(entry.runtime_data, key, name) for key, name in SENSORS.items())
+    async_add_entities(KinderCloseSensor(entry.runtime_data, key) for key in SENSORS)
 
 
 class KinderCloseSensor(CoordinatorEntity, SensorEntity):
     _attr_has_entity_name = True
+    # Datos detallados de menores: visibles en el estado actual, pero fuera de la base
+    # de datos del historial (recorder) y, por tanto, de sus copias de seguridad.
+    _unrecorded_attributes = frozenset({"fichas", "consultado_en", "sesiones", "detalles", "url_ficha"})
 
-    def __init__(self, coordinator, key, name):
+    def __init__(self, coordinator, key):
         super().__init__(coordinator)
         self.key = key
         pupil_id = coordinator.entry.data[CONF_PUPIL_ID]
         self._attr_unique_id = f"{pupil_id}_{key}"
-        self._attr_name = name
+        self._attr_translation_key = key
+        # Identificador fijo e independiente del idioma: es la interfaz documentada
+        # para tarjetas y automatizaciones (docs/architecture.md).
         self.entity_id = f"sensor.kinderclose_{pupil_id}_{key}"
         self._attr_device_info = DeviceInfo(identifiers={(DOMAIN, pupil_id)}, name=f"KinderClose {pupil_id}", manufacturer="KinderClose", entry_type=DeviceEntryType.SERVICE)
         if key == "ultima_ficha":

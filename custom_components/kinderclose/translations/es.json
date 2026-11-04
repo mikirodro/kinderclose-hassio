@@ -24,11 +24,50 @@
     "error": {
       "invalid_auth": "Usuario o contraseña de KinderClose incorrectos.",
       "cannot_connect": "No se puede conectar con KinderClose.",
-      "invalid_pupil": "No se encuentra el alumno o no tiene fichas. Comprueba el ID o el nombre completo."
+      "invalid_pupil": "No se encuentra el alumno en esta cuenta. Comprueba el ID o el nombre completo.",
+      "no_records": "El alumno todavía no tiene fichas. Vuelve a intentarlo cuando el centro publique alguna.",
+      "unknown": "Error inesperado. Revisa el registro de Home Assistant."
     },
     "abort": {
       "already_configured": "Este alumno ya está configurado.",
       "reauth_successful": "Credenciales actualizadas."
+    }
+  },
+  "entity": {
+    "sensor": {
+      "ultima_ficha": {
+        "name": "Última ficha"
+      },
+      "asistencia": {
+        "name": "Asistencia"
+      },
+      "entrada": {
+        "name": "Entrada"
+      },
+      "salida": {
+        "name": "Salida"
+      },
+      "desayuno": {
+        "name": "Desayuno"
+      },
+      "primero": {
+        "name": "Primero"
+      },
+      "segundo": {
+        "name": "Segundo"
+      },
+      "postre": {
+        "name": "Postre"
+      },
+      "merienda": {
+        "name": "Merienda"
+      },
+      "sueno": {
+        "name": "Sueño"
+      },
+      "deposiciones": {
+        "name": "Deposiciones"
+      }
     }
   }
 }
