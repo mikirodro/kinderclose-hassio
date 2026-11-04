@@ -1,9 +1,9 @@
 import unittest
-from custom_components.kinderclose.client import parse_record
+from custom_components.kinderclose.client import ParseError, parse_record
 
 
-def fixture(naps="", stools="", food=""):
-    return f'''<h1>Alumno - 2026-10-07</h1>
+def fixture(naps="", stools="", food="", heading="Alumno - 2026-10-07", extra=""):
+    return f'''<h1>{heading}</h1>{extra}
     <div class="panel"><h3 class="panel-title">Presencia</h3>
     <p><strong>Ausente</strong>: No</p><p><strong>Hora entrada</strong>: --</p></div>
     <div class="panel"><h3 class="panel-title">Comidas</h3>
@@ -31,8 +31,35 @@ class ParserTests(unittest.TestCase):
         self.assertIsNone(record["sueno_minutos"])
 
     def test_login_or_changed_page_is_rejected(self):
-        with self.assertRaises(ValueError):
+        with self.assertRaises(ParseError):
             parse_record('<form><input name="password"></form>', "https://example.com")
+
+
+class DateTests(unittest.TestCase):
+    BIRTH = "<p>Fecha de nacimiento: 01/02/2024</p>"
+
+    def date_of(self, **kwargs):
+        return parse_record(fixture(**kwargs), "https://example.com")["fecha"]
+
+    def test_calendar_default_date_has_priority(self):
+        script = "<script>$('#cal').datepicker({defaultDate: '2026-10-08'});</script>"
+        self.assertEqual(self.date_of(extra=script), "2026-10-08")
+
+    def test_heading_date_wins_over_other_dates_in_the_page(self):
+        self.assertEqual(self.date_of(extra=self.BIRTH), "2026-10-07")
+
+    def test_spanish_date_format_is_understood(self):
+        self.assertEqual(self.date_of(heading="Ficha del 7/10/2026"), "2026-10-07")
+
+    def test_single_date_in_body_is_used_without_heading_date(self):
+        self.assertEqual(self.date_of(heading="Ficha", extra="<p>Día 2026-10-07</p>"), "2026-10-07")
+
+    def test_ambiguous_dates_are_rejected_instead_of_guessed(self):
+        with self.assertRaisesRegex(ParseError, "ambigüedad"):
+            self.date_of(heading="Ficha", extra="<p>Día 2026-10-07</p>" + self.BIRTH)
+
+    def test_invalid_dates_are_ignored(self):
+        self.assertEqual(self.date_of(heading="Ficha 2026-10-07", extra="<p>Ref 2026-13-45</p>"), "2026-10-07")
 
 
 

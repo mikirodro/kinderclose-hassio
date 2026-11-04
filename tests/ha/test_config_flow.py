@@ -1,15 +1,14 @@
 """Pruebas del flujo de configuración y reautenticación."""
-from unittest.mock import patch
+from unittest.mock import ANY, patch
 
 import pytest
-import requests
 
 from homeassistant import config_entries
 from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
 from homeassistant.data_entry_flow import FlowResultType
 
 from conftest import DATA, USER_INPUT
-from custom_components.kinderclose.client import AuthenticationError, NoRecords, PupilNotFound
+from custom_components.kinderclose.client import AuthenticationError, CannotConnect, NoRecords, PupilNotFound
 from custom_components.kinderclose.const import CONF_PUPIL_ID, DOMAIN
 
 VALIDATE = "custom_components.kinderclose.config_flow._validate"
@@ -36,7 +35,7 @@ async def test_user_flow_creates_entry_with_resolved_pupil_id(hass):
     ("side_effect", "error"),
     [
         (AuthenticationError, "invalid_auth"),
-        (requests.ConnectionError, "cannot_connect"),
+        (CannotConnect, "cannot_connect"),
         (PupilNotFound, "invalid_pupil"),
         (NoRecords, "no_records"),
         (ValueError, "unknown"),
@@ -70,7 +69,7 @@ async def test_reauth_updates_credentials_and_keeps_pupil(hass, entry):
     assert result["reason"] == "reauth_successful"
     assert entry.data[CONF_PASSWORD] == "nuevo"
     assert entry.data[CONF_PUPIL_ID] == "123"
-    validate.assert_called_once_with("familia@example.com", "nuevo", "123")
+    validate.assert_called_once_with(ANY, "familia@example.com", "nuevo", "123")
 
 
 async def test_reauth_with_rejected_credentials_keeps_old_ones(hass, entry):
