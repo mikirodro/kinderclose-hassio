@@ -1,0 +1,4 @@
+# Dependencias de la CI: pruebas con Home Assistant (fija la versión de HA) y lint.
+-r requirements.txt
+pytest-homeassistant-custom-component==0.13.375
+ruff==0.17.3
