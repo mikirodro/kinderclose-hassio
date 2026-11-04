@@ -9,4 +9,6 @@ Gracias por ayudar a mejorar KinderClose.
 - Ejecuta las pruebas indicadas en el [README](README.md#pruebas-para-desarrollo). La validación de GitHub Actions también comprueba el manifiesto con hassfest.
 - Usa ejemplos y pruebas con datos inventados. Conserva la compatibilidad de los sensores y documenta cualquier cambio que afecte a tarjetas o automatizaciones.
 
+Consulta también el [mapa del repositorio y la guía de mantenimiento](docs/maintenance.md) y el [contrato de datos](docs/architecture.md).
+
 Las contribuciones se incorporan al proyecto bajo la [licencia MIT](LICENSE).

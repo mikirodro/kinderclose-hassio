@@ -2,7 +2,7 @@
 
 ![KinderClose](custom_components/kinderclose/brand/logo.png)
 
-Integración para consultar las fichas de KinderClose desde Home Assistant. Crea once sensores agrupados en un dispositivo por alumno y consulta las últimas cinco fichas cada 15 minutos.
+Integración para consultar las fichas de KinderClose desde Home Assistant. Crea once sensores agrupados en un dispositivo por alumno y consulta hasta cinco fichas cada 15 minutos.
 
 ## Instalación con HACS
 
@@ -19,7 +19,7 @@ Puedes añadir varios alumnos repitiendo la configuración. Las credenciales se 
 
 El prefijo es `sensor.kinderclose_<ID>_`. Los sensores son `ultima_ficha`, `asistencia`, `entrada`, `salida`, `desayuno`, `primero`, `segundo`, `postre`, `merienda`, `sueno` y `deposiciones`.
 
-Se muestra la ficha más reciente disponible, que puede ser de un día anterior. Todos los sensores incluyen la fecha y el enlace de la ficha. `ultima_ficha` incluye hasta cinco fichas en sus atributos; `sueno` contiene sesiones y `deposiciones` incluye detalles. Estos datos de menores pueden quedar accesibles desde Home Assistant, su historial y sus copias de seguridad según tu configuración. Revisa los accesos y la retención antes de compartirlos.
+Se muestra la ficha más reciente entre las consultadas, que puede ser de un día anterior. La integración consulta los primeros cinco enlaces que ofrece KinderClose; la selección depende del orden de esa página. Todos los sensores incluyen la fecha y el enlace de la ficha. `ultima_ficha` incluye hasta cinco fichas en sus atributos; `sueno` contiene sesiones y `deposiciones` incluye detalles. Estos datos de menores pueden quedar accesibles desde Home Assistant, su historial y sus copias de seguridad según tu configuración. Revisa los accesos y la retención antes de compartirlos.
 
 ## Actualización desde el script anterior
 
@@ -36,6 +36,11 @@ python3 -m venv .venv
 ```
 
 El archivo `requirements.txt` contiene dependencias para las pruebas fuera de Home Assistant; la integración declara sus propios requisitos en el manifiesto.
+
+## Documentación para mantener el proyecto
+
+- [Arquitectura, flujo y contrato de datos](docs/architecture.md).
+- [Estructura, desarrollo, publicación y recuperación](docs/maintenance.md).
 
 ## Seguridad, contribuciones y licencia
 
