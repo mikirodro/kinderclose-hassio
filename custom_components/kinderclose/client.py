@@ -18,6 +18,18 @@ def nullable(value):
     return value.strip() if value.strip() not in ("", "--") else None
 
 
+class ParseError(ValueError):
+    """La página de KinderClose no tiene la estructura esperada."""
+
+
+class PupilNotFound(ValueError):
+    """El alumno configurado no se puede identificar en la cuenta."""
+
+
+class NoRecords(ValueError):
+    """El alumno existe pero todavía no tiene fichas."""
+
+
 def parse_record(html, url):
     soup = BeautifulSoup(html, "html.parser")
     panels = {}
@@ -26,12 +38,12 @@ def parse_record(html, url):
         if heading:
             panels[normalize(heading.get_text(" ", strip=True))] = panel
     if not {"presencia", "comidas", "deposicion"}.issubset(panels):
-        raise ValueError("La ficha no contiene los paneles esperados; puede haber cambiado la web.")
+        raise ParseError("La ficha no contiene los paneles esperados; puede haber cambiado la web.")
     match = re.search(r"defaultDate:\s*['\"](\d{4}-\d{2}-\d{2})", html)
     if not match:
         match = re.search(r"\b(\d{4}-\d{2}-\d{2})\b", soup.get_text(" "))
     if not match:
-        raise ValueError("No se ha podido identificar la fecha de la ficha.")
+        raise ParseError("No se ha podido identificar la fecha de la ficha.")
     record = {"fecha": date.fromisoformat(match[1]).isoformat(), "url": url}
     for section in ("presencia", "comidas"):
         values = {}
@@ -44,13 +56,13 @@ def parse_record(html, url):
                 values[key] = nullable(value)
         record[section] = values
     if record["presencia"].get("ausente") not in ("Sí", "Si", "No"):
-        raise ValueError("No se ha podido interpretar la asistencia.")
+        raise ParseError("No se ha podido interpretar la asistencia.")
     record["sueno"] = []
     if "dormir" in panels:
         for row in panels["dormir"].select("tbody tr"):
             cells = row.find_all("td")
             if len(cells) == 2:
-                record["sueno"].append(dict(zip(("desde", "hasta"), (nullable(c.get_text(strip=True)) for c in cells))))
+                record["sueno"].append(dict(zip(("desde", "hasta"), (nullable(c.get_text(strip=True)) for c in cells), strict=True)))
     minutes = 0
     complete = True
     for nap in record["sueno"]:
@@ -65,7 +77,7 @@ def parse_record(html, url):
     for row in panels["deposicion"].select("tbody tr"):
         cells = row.find_all("td")
         if len(cells) == 3:
-            record["deposiciones"].append(dict(zip(("tipo", "hora", "info"), (nullable(c.get_text(" ", strip=True)) for c in cells))))
+            record["deposiciones"].append(dict(zip(("tipo", "hora", "info"), (nullable(c.get_text(" ", strip=True)) for c in cells), strict=True)))
     return record
 
 
@@ -145,25 +157,25 @@ class KinderClose:
         self.logged_in = False
         login = self._request("GET", BASE + "/auth/login")
         token = BeautifulSoup(login.text, "html.parser").select_one('input[name="_token"]')
-        if token is None:
-            raise ValueError("No se encuentra el formulario de acceso.")
+        if token is None or not token.get("value"):
+            raise ParseError("No se encuentra el formulario de acceso.")
         response = self._request("POST", BASE + "/auth/login", data={"_token": token["value"], "email": user, "password": password})
         if "/auth/login" in response.url or BeautifulSoup(response.text, "html.parser").select_one('input[name="password"]'):
             raise AuthenticationError("KinderClose ha rechazado el inicio de sesión.")
         self.logged_in = True
 
-    def fetch(self, limit=5, requested_date=None):
+    def fetch(self, limit=5):
         if not self.logged_in:
             self.login()
-            return self._fetch(limit, requested_date)
+            return self._fetch(limit)
         try:
-            return self._fetch(limit, requested_date)
+            return self._fetch(limit)
         except SessionExpired:
             # La sesión reutilizada ha caducado: un único reintento con login nuevo.
             self.login()
-            return self._fetch(limit, requested_date)
+            return self._fetch(limit)
 
-    def _fetch(self, limit, requested_date):
+    def _fetch(self, limit):
         listing = BeautifulSoup(self.get(BASE + "/familiar/alumno").text, "html.parser")
         pupils = {}
         for anchor in listing.select("a[href]"):
@@ -176,17 +188,15 @@ class KinderClose:
             name = normalize(self.pupil_name)
             matches = [key for key, names in pupils.items() if name and any(normalize(n) == name for n in names)]
             if len(matches) != 1:
-                raise ValueError("El nombre no identifica un único alumno. Configura el ID del alumno.")
+                raise PupilNotFound("El nombre no identifica un único alumno. Configura el ID del alumno.")
             pupil_id = matches[0]
         if pupil_id not in pupils:
-            raise ValueError("El alumno configurado no aparece en esta cuenta.")
+            raise PupilNotFound("El alumno configurado no aparece en esta cuenta.")
         pupil_url = BASE + "/familiar/alumno/" + pupil_id
         profile = BeautifulSoup(self.get(pupil_url).text, "html.parser")
         links = list(dict.fromkeys(urljoin(BASE, a["href"]) for a in profile.select("a[href]") if re.fullmatch(re.escape(pupil_url) + r"/ficha/\d+", urljoin(BASE, a["href"]))))
-        if requested_date:
-            links = [pupil_url + "/ficha/" + requested_date]
         if not links:
-            raise ValueError("El alumno todavía no tiene fichas disponibles.")
+            raise NoRecords("El alumno todavía no tiene fichas disponibles.")
         records = [parse_record(self.get(url).text, url) for url in links[:limit]]
         records.sort(key=lambda r: r["fecha"], reverse=True)
         return {"alumno_id": pupil_id, "consultado_en": datetime.now(timezone.utc).isoformat(), "fichas": records}

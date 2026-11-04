@@ -1,28 +1,43 @@
 name: Validate
 on:
   push:
+    branches: [main]
   pull_request:
   workflow_dispatch:
+  # Release lo reutiliza para validar exactamente el commit que se publica.
+  workflow_call:
 
 # Mínimo privilegio: el GITHUB_TOKEN solo puede leer el repositorio.
 permissions:
   contents: read
 
+concurrency:
+  group: validate-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
+  # Los nombres "tests" y "hassfest" son checks obligatorios del ruleset de main: no renombrarlos.
   tests:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       # Actions fijadas por SHA de commit (inmutable); Dependabot las actualiza.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      # Sin caché de pip: la release no debe depender de cachés escritas por otras ramas.
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
-          python-version: '3.13'
-      - run: pip install -r requirements.txt
-      - run: python -m unittest discover -s tests -v
+          python-version: '3.14'
+      - run: pip install -r requirements_test.txt
+      - run: ruff check .
+      - name: Pruebas del cliente y del parser
+        run: python -m unittest discover -s tests -v
+      - name: Pruebas con Home Assistant
+        run: pytest -v
   hassfest:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -30,3 +45,13 @@ jobs:
       # Home Assistant solo publica hassfest en la rama master: se fija el commit
       # revisado en lugar de seguir la rama. Actualizar manualmente de vez en cuando.
       - uses: home-assistant/actions/hassfest@86d4564712fa02543c808e3a693dd04f9d3f8361 # master 2026-10-26
+  hacs:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      # Comprueba la estructura y los metadatos del repositorio que exige HACS. Las imágenes
+      # de marca son locales (brand/), por eso se omite la comprobación de home-assistant/brands.
+      - uses: hacs/action@d556e736723344f83838d08488c983a15381059a # 22.5.0
+        with:
+          category: integration
+          ignore: brands

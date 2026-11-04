@@ -2,7 +2,7 @@
 import unittest
 from unittest.mock import MagicMock, patch
 
-from custom_components.kinderclose.client import AuthenticationError, KinderClose, SessionExpired
+from custom_components.kinderclose.client import AuthenticationError, KinderClose, NoRecords, ParseError, PupilNotFound, SessionExpired
 from test_kinderclose import fixture
 
 BASE = "https://app.kinderclose.com"
@@ -75,10 +75,25 @@ class ClientTests(unittest.TestCase):
     def test_unrelated_pupil_is_rejected(self, session_class):
         session = session_class.return_value
         session.request.side_effect = login_responses() + [response('<a href="/familiar/alumno/123">Alumno</a>', "/familiar/alumno")]
-        with self.assertRaisesRegex(ValueError, "no aparece"):
+        with self.assertRaisesRegex(PupilNotFound, "no aparece"):
             with KinderClose("user", "password", "999") as client:
                 client.fetch()
         session.close.assert_called_once()
+
+    @patch("custom_components.kinderclose.client.requests.Session")
+    def test_pupil_without_records_raises_no_records(self, session_class):
+        session = session_class.return_value
+        session.request.side_effect = login_responses() + [response(LISTING, "/familiar/alumno"), response("", "/familiar/alumno/123")]
+        with self.assertRaises(NoRecords):
+            KinderClose("user", "password", "123").fetch()
+
+    @patch("custom_components.kinderclose.client.requests.Session")
+    def test_login_form_without_token_value_is_rejected_before_posting(self, session_class):
+        session = session_class.return_value
+        session.request.side_effect = [response('<input name="_token">', "/auth/login")]
+        with self.assertRaises(ParseError):
+            KinderClose("user", "password", "123").fetch()
+        self.assertEqual(methods(session), ["GET"])
 
 
 class SessionReuseTests(unittest.TestCase):

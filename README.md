@@ -19,7 +19,7 @@ Puedes añadir varios alumnos repitiendo la configuración. Las credenciales se 
 
 El prefijo es `sensor.kinderclose_<ID>_`. Los sensores son `ultima_ficha`, `asistencia`, `entrada`, `salida`, `desayuno`, `primero`, `segundo`, `postre`, `merienda`, `sueno` y `deposiciones`.
 
-Se muestra la ficha más reciente entre las consultadas, que puede ser de un día anterior. La integración consulta los primeros cinco enlaces que ofrece KinderClose; la selección depende del orden de esa página. Todos los sensores incluyen la fecha y el enlace de la ficha. `ultima_ficha` incluye hasta cinco fichas en sus atributos; `sueno` contiene sesiones y `deposiciones` incluye detalles. Estos datos de menores pueden quedar accesibles desde Home Assistant, su historial y sus copias de seguridad según tu configuración. Revisa los accesos y la retención antes de compartirlos.
+Se muestra la ficha más reciente entre las consultadas, que puede ser de un día anterior. La integración consulta los primeros cinco enlaces que ofrece KinderClose; la selección depende del orden de esa página. Todos los sensores incluyen la fecha y el enlace de la ficha. `ultima_ficha` incluye hasta cinco fichas en sus atributos; `sueno` contiene sesiones y `deposiciones` incluye detalles. Desde la versión 0.4.0 esos atributos detallados, el enlace y el momento de consulta no se guardan en el historial de Home Assistant; los estados de los sensores (por ejemplo, la hora de entrada o los minutos de sueño) sí. Estos datos de menores pueden quedar accesibles desde Home Assistant, su historial y sus copias de seguridad según tu configuración. Revisa los accesos y la retención antes de compartirlos.
 
 ## Actualización desde el script anterior
 
@@ -27,15 +27,17 @@ Desde la versión 0.3.2 el proyecto solo distribuye la integración de Home Assi
 
 ## Pruebas para desarrollo
 
-Las pruebas utilizan HTML ficticio y peticiones simuladas; no necesitan credenciales ni acceso a KinderClose.
+Las pruebas utilizan HTML ficticio y peticiones simuladas; no necesitan credenciales ni acceso a KinderClose. Requieren Python 3.14, la versión que usa Home Assistant.
 
 ```sh
 python3 -m venv .venv
-.venv/bin/python -m pip install -r requirements.txt
-.venv/bin/python -m unittest discover -s tests -v
+.venv/bin/python -m pip install -r requirements_test.txt
+.venv/bin/ruff check .
+.venv/bin/python -m unittest discover -s tests -v   # cliente y parser
+.venv/bin/pytest -v                                 # flujo de configuración y sensores en Home Assistant
 ```
 
-El archivo `requirements.txt` contiene dependencias para las pruebas fuera de Home Assistant; la integración declara sus propios requisitos en el manifiesto.
+`requirements.txt` contiene las dependencias del cliente y `requirements_test.txt` añade Home Assistant de pruebas y ruff; la integración declara sus propios requisitos en el manifiesto.
 
 ## Documentación para mantener el proyecto
 

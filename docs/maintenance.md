@@ -5,13 +5,16 @@
 | Ruta | Responsabilidad |
 | --- | --- |
 | `custom_components/kinderclose/` | Integración distribuida: configuración, cliente HTTP y parser, coordinador, sensores, manifiesto, traducciones y marca. Mantener esta ruta para HACS y la instalación manual. |
-| `tests/` | Pruebas unitarias del cliente y del parser con datos ficticios. |
-| `.github/workflows/validate.yaml` | Pruebas Python y validación hassfest en GitHub Actions. |
+| `tests/` | Pruebas unitarias del cliente y del parser (`unittest`) con datos ficticios. |
+| `tests/ha/` | Pruebas con Home Assistant (`pytest-homeassistant-custom-component`): configuración, reautenticación, sensores y descarga. |
+| `.github/workflows/validate.yaml` | Ruff, pruebas, hassfest y validación de HACS. Los jobs `tests` y `hassfest` son checks obligatorios de `main`. |
+| `.github/workflows/release.yaml` | Publicación manual: valida el commit y crea el tag y la release. |
+| `CHANGELOG.md` | Cambios por versión; su sección es el texto de la release. |
 | `hacs.json` | Metadatos y versión mínima declarada para HACS. |
-| `requirements.txt` | Dependencias para las pruebas independientes; el manifiesto declara las de ejecución de la integración. |
+| `requirements.txt`, `requirements_test.txt` | Dependencias del cliente y de la CI; el manifiesto declara las de ejecución de la integración. |
 | `assets/` | Recursos para documentación; no es el directorio de la integración. |
 
-Para preparar el entorno y ejecutar las pruebas consulta el [README](../README.md#pruebas-para-desarrollo). Las pruebas actuales no arrancan Home Assistant ni comprueban una instalación real. Hassfest valida metadatos, no el funcionamiento completo. Los rangos de dependencias permiten versiones distintas entre instalaciones; un resultado local no garantiza que se haya probado toda la matriz de versiones.
+Para preparar el entorno y ejecutar las pruebas consulta el [README](../README.md#pruebas-para-desarrollo). Las pruebas de `tests/ha` arrancan un Home Assistant de pruebas con respuestas simuladas, pero no comprueban la web real ni una instalación completa. Hassfest valida metadatos, no el funcionamiento completo. Los rangos de dependencias permiten versiones distintas entre instalaciones; un resultado local no garantiza que se haya probado toda la matriz de versiones.
 
 ## Revisión de cambios
 
@@ -22,10 +25,10 @@ Para preparar el entorno y ejecutar las pruebas consulta el [README](../README.m
 
 ## Lista de publicación
 
-1. Comprueba que el código, las traducciones y la documentación coinciden, y que las pruebas y hassfest pasan en el commit candidato. Verifica compatibilidad con la versión mínima declarada en `hacs.json` y con una versión actual de Home Assistant; si no se ha probado, indícalo en la publicación.
-2. Actualiza la versión de `custom_components/kinderclose/manifest.json` y describe en las notas los cambios, correcciones, incompatibilidades y pasos de migración. Comprueba que los requisitos de ejecución y pruebas siguen siendo coherentes.
-3. Revisa el diff y prepara una etiqueta Git y una release de GitHub que apunten al mismo commit validado. Publicar una release es una operación independiente de editar este repositorio.
-4. En un entorno de prueba, instala o actualiza mediante HACS, reinicia Home Assistant y comprueba configuración, actualización de sensores, reautenticación y descarga de la integración. No publiques credenciales ni datos reales en las evidencias.
+1. En un pull request, sube la versión de `custom_components/kinderclose/manifest.json` y añade en `CHANGELOG.md` una sección `## [X.Y.Z]` con los cambios, correcciones, incompatibilidades y pasos de migración. Comprueba que el código, las traducciones y la documentación coinciden y que los requisitos de ejecución y pruebas siguen siendo coherentes.
+2. Fusiona el pull request cuando los checks pasen.
+3. En GitHub, abre **Actions → Release → Run workflow** sobre `main`. El workflow comprueba que la versión no esté publicada y que exista su sección en el changelog, valida ese commit con los mismos checks que los pull requests y, solo si pasan, crea el tag y la release con las notas del changelog. No crees tags ni releases a mano: el ruleset de tags impide moverlos o borrarlos después.
+4. En un entorno de prueba, instala o actualiza mediante HACS, reinicia Home Assistant y comprueba configuración, actualización de sensores, reautenticación y descarga de la integración. Verifica la compatibilidad con la versión mínima de `hacs.json`; si no se ha probado, indícalo en la release. No publiques credenciales ni datos reales en las evidencias.
 
 ## Recuperación
 

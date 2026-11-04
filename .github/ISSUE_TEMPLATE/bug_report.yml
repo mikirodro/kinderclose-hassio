@@ -1,0 +1,44 @@
+name: Fallo funcional
+description: Algo no funciona como se espera en la integración.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **Esta incidencia es pública.** No incluyas contraseñas, cookies, HTML real de KinderClose, capturas, nombres ni identificadores de alumnos. Sustituye los datos reales por valores inventados.
+  - type: checkboxes
+    id: privacy
+    attributes:
+      label: Privacidad
+      options:
+        - label: He revisado el texto y los logs y no contienen datos personales ni credenciales.
+          required: true
+  - type: input
+    id: version
+    attributes:
+      label: Versión de la integración
+      placeholder: "0.4.0"
+    validations:
+      required: true
+  - type: input
+    id: ha_version
+    attributes:
+      label: Versión de Home Assistant
+      placeholder: "2026.10.4"
+    validations:
+      required: true
+  - type: textarea
+    id: description
+    attributes:
+      label: Qué ocurre y qué esperabas
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Pasos para reproducirlo
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs anonimizados
+      render: text

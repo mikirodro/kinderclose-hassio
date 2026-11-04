@@ -4,7 +4,18 @@ updates:
     directory: /
     schedule:
       interval: weekly
+    # Esperar unos días reduce el riesgo de adoptar una versión comprometida recién publicada.
+    cooldown:
+      default-days: 7
+    groups:
+      actions:
+        patterns: ["*"]
   - package-ecosystem: pip
     directory: /
     schedule:
       interval: weekly
+    cooldown:
+      default-days: 7
+    groups:
+      test-tooling:
+        patterns: ["pytest-homeassistant-custom-component", "ruff"]
