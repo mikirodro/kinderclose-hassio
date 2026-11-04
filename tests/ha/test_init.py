@@ -43,9 +43,10 @@ async def test_pupils_of_the_same_account_share_one_client(hass, entry):
     other_account = MockConfigEntry(domain=DOMAIN, unique_id="200", title="KinderClose 200", data={**USER_INPUT, "username": "otra@example.com", CONF_PUPIL_ID: "200"})
     other_account.add_to_hass(hass)
     with patch(FETCH, return_value=DATA) as fetch, patch(CLOSE) as close:
-        for config_entry in (entry, sibling, other_account):
-            assert await hass.config_entries.async_setup(config_entry.entry_id)
+        # Configurar la primera entrada del dominio carga también las demás.
+        assert await hass.config_entries.async_setup(entry.entry_id)
         await hass.async_block_till_done()
+        assert all(e.state is ConfigEntryState.LOADED for e in (entry, sibling, other_account))
         assert entry.runtime_data.client is sibling.runtime_data.client
         assert entry.runtime_data.client is not other_account.runtime_data.client
         assert {call.args[0] for call in fetch.call_args_list} >= {"123", "124", "200"}
