@@ -1,0 +1,68 @@
+name: Release
+# Publicación manual: Actions → Release → Run workflow (rama main).
+# Toma la versión de manifest.json y las notas de CHANGELOG.md, valida ese commit
+# con el mismo workflow que los pull requests y solo entonces crea el tag y la release.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      version: ${{ steps.check.outputs.version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - id: check
+        name: Comprobar versión, tag y notas
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version=$(python3 -c 'import json; print(json.load(open("custom_components/kinderclose/manifest.json"))["version"])')
+          if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::La versión de manifest.json no es X.Y.Z: $version"; exit 1
+          fi
+          if git ls-remote --exit-code --tags origin "refs/tags/$version" >/dev/null; then
+            echo "::error::El tag $version ya existe. Sube la versión en manifest.json y CHANGELOG.md."; exit 1
+          fi
+          if gh release view "$version" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "::error::La release $version ya existe."; exit 1
+          fi
+          if [[ -z "$(.github/scripts/release-notes.sh "$version")" ]]; then
+            echo "::error::CHANGELOG.md no tiene una sección '## [$version]' con contenido."; exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+  validate:
+    needs: prepare
+    uses: ./.github/workflows/validate.yaml
+
+  publish:
+    needs: [prepare, validate]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    # Único job con escritura: crea el tag y la release.
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Crear tag y release en el commit validado
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.prepare.outputs.version }}
+        run: |
+          .github/scripts/release-notes.sh "$VERSION" > "$RUNNER_TEMP/notes.md"
+          gh release create "$VERSION" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
+            --title "KinderClose $VERSION" --notes-file "$RUNNER_TEMP/notes.md" --latest
