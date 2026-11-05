@@ -10,6 +10,7 @@ from bs4 import BeautifulSoup
 
 BASE = "https://app.kinderclose.com"
 TIMEOUT = aiohttp.ClientTimeout(total=30)
+MAX_RESPONSE_BYTES = 2 * 1024 * 1024  # Límite del contenido descomprimido.
 REDIRECT_STATUSES = (301, 302, 303, 307, 308)
 # Fechas en formato ISO (2026-10-07) o español (7/10/2026).
 DATE = re.compile(r"\b(?:(\d{4})-(\d{2})-(\d{2})|(\d{1,2})/(\d{1,2})/(\d{4}))\b")
@@ -179,7 +180,15 @@ class KinderClose:
                     location = response.headers.get("Location") if response.status in REDIRECT_STATUSES else None
                     if location is None:
                         response.raise_for_status()
-                        return url, await response.text()
+                        body = bytearray()
+                        async for chunk in response.content.iter_chunked(64 * 1024):
+                            body.extend(chunk)
+                            if len(body) > MAX_RESPONSE_BYTES:
+                                raise ParseError("La respuesta de KinderClose supera el tamaño permitido.")
+                        try:
+                            return url, body.decode(response.charset or "utf-8")
+                        except (LookupError, UnicodeDecodeError) as error:
+                            raise ParseError("No se puede interpretar la codificación de KinderClose.") from error
             except (aiohttp.ClientError, TimeoutError) as error:
                 raise CannotConnect("No se puede conectar con KinderClose.") from error
             if response.status not in (307, 308):

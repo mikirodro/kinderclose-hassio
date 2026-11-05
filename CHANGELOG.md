@@ -2,6 +2,14 @@
 
 Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/). La sección de cada versión se usa como notas de la release de GitHub.
 
+## [0.5.1]
+
+### Seguridad y mantenimiento
+
+- Se rechazan respuestas HTTP de más de 2 MiB una vez descomprimidas. Una página legítima mayor provocaría un error controlado.
+- Se actualiza el mínimo de `aiohttp` para pruebas independientes a 3.14.5. Home Assistant gestiona su propia versión; este cambio no la actualiza.
+- La compatibilidad mínima declarada con Home Assistant 2025.1 sigue pendiente de validación funcional.
+
 ## [0.5.0]
 
 ### Cambios
@@ -16,7 +24,7 @@ No cambian los sensores, sus identificadores ni sus atributos.
 
 ### Privacidad
 
-- Las fichas completas (`fichas`), las sesiones de sueño (`sesiones`), los detalles de deposiciones (`detalles`), el enlace (`url_ficha`) y `consultado_en` siguen visibles en el estado actual, pero ya no se guardan en el historial de Home Assistant ni en sus copias. El historial anterior no se borra automáticamente.
+- Las fichas completas (`fichas`), las sesiones de sueño (`sesiones`), los detalles de deposiciones (`detalles`), el enlace (`url_ficha`) y `consultado_en` siguen visibles en el estado actual, pero se excluyen del historial de Home Assistant. Esto no garantiza su ausencia de otras copias o integraciones. El historial anterior no se borra automáticamente.
 
 ### Cambios
 

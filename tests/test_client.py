@@ -1,13 +1,15 @@
 """Pruebas del cliente compartido, sin acceder a la red."""
 import asyncio
+import gzip
 import unittest
 from unittest.mock import MagicMock
 from urllib.parse import urlparse
 
 import aiohttp
+from aiohttp import web
 
 from custom_components.kinderclose.client import (
-    AuthenticationError, CannotConnect, KinderClose, NoRecords, ParseError, PupilNotFound, SessionExpired,
+    AuthenticationError, CannotConnect, KinderClose, MAX_RESPONSE_BYTES, NoRecords, ParseError, PupilNotFound, SessionExpired,
 )
 from test_kinderclose import fixture
 
@@ -26,6 +28,8 @@ class FakeResponse:
         self.html = html
         self.status = status
         self.headers = {"Location": location} if location else {}
+        self.charset = "utf-8"
+        self.content = self
 
     async def __aenter__(self):
         return self
@@ -33,10 +37,12 @@ class FakeResponse:
     async def __aexit__(self, *exc):
         return False
 
-    async def text(self):
+    async def iter_chunked(self, size):
         # Cede el control para que las consultas simultáneas se intercalen de verdad.
         await asyncio.sleep(0)
-        return self.html
+        data = self.html.encode("utf-8")
+        for offset in range(0, len(data), size):
+            yield data[offset:offset + size]
 
     def raise_for_status(self):
         if self.status >= 400:
@@ -134,6 +140,30 @@ class ClientTests(unittest.IsolatedAsyncioTestCase):
 
 
 class NetworkErrorTests(unittest.IsolatedAsyncioTestCase):
+    async def test_oversized_response_is_rejected(self):
+        session = FakeSession(routes(**{"GET /auth/login": FakeResponse("x" * (MAX_RESPONSE_BYTES + 1))}))
+        with self.assertRaisesRegex(ParseError, "tamaño permitido"):
+            await KinderClose(session, "user", "password").fetch("123")
+        self.assertEqual(session.methods(), ["GET"])
+
+    async def test_compressed_response_limit_applies_after_decompression(self):
+        async def handler(request):
+            return web.Response(body=gzip.compress(b"x" * (MAX_RESPONSE_BYTES + 1)), headers={"Content-Encoding": "gzip"})
+
+        app = web.Application()
+        app.router.add_get("/", handler)
+        runner = web.AppRunner(app)
+        await runner.setup()
+        self.addAsyncCleanup(runner.cleanup)
+        site = web.TCPSite(runner, "127.0.0.1", 0)
+        await site.start()
+        port = runner.addresses[0][1]
+        async with aiohttp.ClientSession() as session:
+            client = KinderClose(session, "user", "password")
+            client._check_url = MagicMock()
+            with self.assertRaisesRegex(ParseError, "tamaño permitido"):
+                await client._request("GET", f"http://127.0.0.1:{port}/")
+
     async def test_network_errors_become_cannot_connect(self):
         for error in (aiohttp.ClientConnectionError(), TimeoutError()):
             with self.subTest(error=type(error).__name__):
