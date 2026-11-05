@@ -13,7 +13,7 @@ Integración para consultar las fichas de KinderClose desde Home Assistant. Crea
 
 También puedes copiar `custom_components/kinderclose` a `/config/custom_components/kinderclose` y reiniciar Home Assistant. Las imágenes locales de marca requieren Home Assistant 2026.3 o posterior.
 
-HACS declara Home Assistant 2025.1 como mínimo, pero esa versión todavía no se ha validado funcionalmente con la integración actual. Comprueba la compatibilidad en un entorno de pruebas antes de usar versiones antiguas.
+HACS declara Home Assistant 2025.1 como mínimo. La integración se prueba con Home Assistant 2025.1.0 y una versión actual mediante respuestas simuladas; esas pruebas no sustituyen una instalación completa mediante HACS ni una consulta a KinderClose.
 
 Puedes añadir varios alumnos repitiendo la configuración. Las credenciales se guardan en la configuración interna de Home Assistant. Si KinderClose las rechaza, la integración solicita reautenticación. Si falla una actualización, los sensores se marcan como no disponibles y se reintenta automáticamente. Si el alumno todavía no tiene fichas, no se crea la entrada.
 

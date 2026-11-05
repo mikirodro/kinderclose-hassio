@@ -8,7 +8,7 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/). L
 
 - Se rechazan respuestas HTTP de más de 2 MiB una vez descomprimidas. Una página legítima mayor provocaría un error controlado.
 - Se actualiza el mínimo de `aiohttp` para pruebas independientes a 3.14.5. Home Assistant gestiona su propia versión; este cambio no la actualiza.
-- La compatibilidad mínima declarada con Home Assistant 2025.1 sigue pendiente de validación funcional.
+- La CI comprueba Home Assistant 2025.1.0 y una versión actual con respuestas simuladas; la instalación completa mediante HACS y la web real requieren pruebas adicionales.
 
 ## [0.5.0]
 
