@@ -26,7 +26,7 @@ async def async_setup_entry(hass, entry, async_add_entities):
 class KinderCloseSensor(CoordinatorEntity, SensorEntity):
     _attr_has_entity_name = True
     # Datos detallados de menores: visibles en el estado actual, pero fuera de la base
-    # de datos del historial (recorder) y, por tanto, de sus copias de seguridad.
+    # de datos del historial (recorder); otras integraciones aún pueden acceder a ellos.
     _unrecorded_attributes = frozenset({"fichas", "consultado_en", "sesiones", "detalles", "url_ficha"})
 
     def __init__(self, coordinator, key):

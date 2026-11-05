@@ -13,6 +13,8 @@ Integración para consultar las fichas de KinderClose desde Home Assistant. Crea
 
 También puedes copiar `custom_components/kinderclose` a `/config/custom_components/kinderclose` y reiniciar Home Assistant. Las imágenes locales de marca requieren Home Assistant 2026.3 o posterior.
 
+HACS declara Home Assistant 2025.1 como mínimo. La integración se prueba con Home Assistant 2025.1.0 y una versión actual mediante respuestas simuladas; esas pruebas no sustituyen una instalación completa mediante HACS ni una consulta a KinderClose.
+
 Puedes añadir varios alumnos repitiendo la configuración. Las credenciales se guardan en la configuración interna de Home Assistant. Si KinderClose las rechaza, la integración solicita reautenticación. Si falla una actualización, los sensores se marcan como no disponibles y se reintenta automáticamente. Si el alumno todavía no tiene fichas, no se crea la entrada.
 
 ## Sensores y privacidad
@@ -20,6 +22,8 @@ Puedes añadir varios alumnos repitiendo la configuración. Las credenciales se 
 El prefijo es `sensor.kinderclose_<ID>_`. Los sensores son `ultima_ficha`, `asistencia`, `entrada`, `salida`, `desayuno`, `primero`, `segundo`, `postre`, `merienda`, `sueno` y `deposiciones`.
 
 Se muestra la ficha más reciente entre las consultadas, que puede ser de un día anterior. La integración consulta los primeros cinco enlaces que ofrece KinderClose; la selección depende del orden de esa página. Todos los sensores incluyen la fecha y el enlace de la ficha. `ultima_ficha` incluye hasta cinco fichas en sus atributos; `sueno` contiene sesiones y `deposiciones` incluye detalles. Desde la versión 0.4.0 esos atributos detallados, el enlace y el momento de consulta no se guardan en el historial de Home Assistant; los estados de los sensores (por ejemplo, la hora de entrada o los minutos de sueño) sí. Estos datos de menores pueden quedar accesibles desde Home Assistant, su historial y sus copias de seguridad según tu configuración. Revisa los accesos y la retención antes de compartirlos.
+
+Si no necesitas historial de estos sensores, puedes excluir sus entidades de Recorder siguiendo la [documentación de Home Assistant](https://www.home-assistant.io/integrations/recorder/#configure-filter). La exclusión no elimina registros anteriores ni datos de otras integraciones o copias.
 
 ## Actualización desde el script anterior
 

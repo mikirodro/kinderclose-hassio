@@ -45,6 +45,21 @@ jobs:
       # Home Assistant solo publica hassfest en la rama master: se fija el commit
       # revisado en lugar de seguir la rama. Actualizar manualmente de vez en cuando.
       - uses: home-assistant/actions/hassfest@86d4564712fa02543c808e3a693dd04f9d3f8361 # master 2026-10-26
+  minimum-version:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: '3.12'
+      # Esta versión de pytest-homeassistant incluye HA 2025.1.0 y su aiohttp.
+      # pycares 5 crea un hilo que no limpia el harness antiguo.
+      - run: pip install 'pytest-homeassistant-custom-component==0.13.201' 'beautifulsoup4>=4.15.0,<5' 'pycares==4.5.0'
+      - run: python -m unittest discover -s tests -v
+      - run: pytest -v
   hacs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
