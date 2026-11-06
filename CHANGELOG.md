@@ -2,6 +2,16 @@
 
 Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/). La sección de cada versión se usa como notas de la release de GitHub.
 
+## [Sin publicar]
+
+### Mantenimiento
+
+- Preparación para el Marketplace de Home Assistant 2026.11: el manifiesto declara la categoría `productivity_information` y la validación de `hacs/action` ya no omite la comprobación de marca, como exige el catálogo.
+- El README explica la instalación desde **Ajustes → Marketplace** y mantiene HACS para versiones anteriores a 2026.11. Las secciones de desarrollo no se muestran en el Marketplace.
+- `DeviceInfo` se importa de `homeassistant.helpers.device_registry`. En 2026.11 es una dataclass; la integración ya lo creaba con argumentos con nombre, así que no cambia su comportamiento.
+
+No cambian los sensores, sus identificadores ni sus atributos. Los `entity_id` no cambian con el nuevo sistema de nombres de 2026.11; las tarjetas o plantillas que usen `friendly_name` pueden mostrar nombres distintos tras renombrar la entidad o el dispositivo.
+
 ## [0.5.1]
 
 ### Seguridad y mantenimiento

@@ -64,9 +64,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      # Comprueba la estructura y los metadatos del repositorio que exige HACS. Las imágenes
-      # de marca son locales (brand/), por eso se omite la comprobación de home-assistant/brands.
+      # Comprueba la estructura y los metadatos que exigen el Marketplace de Home Assistant y su
+      # catálogo. Sin comprobaciones ignoradas: el catálogo las rechaza. Las imágenes de marca
+      # son locales (custom_components/kinderclose/brand/).
       - uses: hacs/action@d556e736723344f83838d08488c983a15381059a # 22.5.0
         with:
           category: integration
-          ignore: brands

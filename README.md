@@ -4,16 +4,32 @@
 
 Integración para consultar las fichas de KinderClose desde Home Assistant. Crea once sensores agrupados en un dispositivo por alumno y consulta hasta cinco fichas cada 15 minutos.
 
-## Instalación con HACS
+## Instalación
+
+### Con el Marketplace (Home Assistant 2026.11 o posterior)
+
+1. En **Ajustes → Marketplace**, añade `https://github.com/mikirodro/kinderclose-hassio` como repositorio personalizado de tipo **Integración**. Los repositorios personalizados requieren iniciar sesión con GitHub desde el Marketplace.
+2. Busca KinderClose, descárgalo y reinicia Home Assistant.
+
+Si ya lo tenías instalado con HACS, al actualizar a Home Assistant 2026.11 pasa automáticamente al Marketplace: sigue instalado, conserva su configuración y recibe actualizaciones.
+
+### Con HACS (Home Assistant anterior a 2026.11)
 
 1. En HACS, abre **Repositorios personalizados** y añade `https://github.com/mikirodro/kinderclose-hassio` como **Integración**.
 2. Busca KinderClose, descárgalo y reinicia Home Assistant.
-3. En **Ajustes → Dispositivos y servicios → Añadir integración**, selecciona KinderClose.
-4. Introduce el correo y la contraseña de KinderClose y el ID del alumno. Si no conoces el ID, indica el nombre completo tal como aparece en la web.
 
-También puedes copiar `custom_components/kinderclose` a `/config/custom_components/kinderclose` y reiniciar Home Assistant. Las imágenes locales de marca requieren Home Assistant 2026.3 o posterior.
+HACS no se puede instalar en Home Assistant 2026.11 o posterior.
 
-HACS declara Home Assistant 2025.1 como mínimo. La integración se prueba con Home Assistant 2025.1.0 y una versión actual mediante respuestas simuladas; esas pruebas no sustituyen una instalación completa mediante HACS ni una consulta a KinderClose.
+### Manual
+
+Copia `custom_components/kinderclose` a `/config/custom_components/kinderclose` y reinicia Home Assistant. Así no recibirás avisos de actualización.
+
+### Configuración
+
+1. En **Ajustes → Dispositivos y servicios → Añadir integración**, selecciona KinderClose.
+2. Introduce el correo y la contraseña de KinderClose y el ID del alumno. Si no conoces el ID, indica el nombre completo tal como aparece en la web.
+
+La versión mínima declarada es Home Assistant 2025.1. Las imágenes locales de marca requieren Home Assistant 2026.3 o posterior. La integración se prueba con Home Assistant 2025.1.0 y con versiones actuales mediante respuestas simuladas; esas pruebas no sustituyen una instalación completa ni una consulta a KinderClose.
 
 Puedes añadir varios alumnos repitiendo la configuración. Las credenciales se guardan en la configuración interna de Home Assistant. Si KinderClose las rechaza, la integración solicita reautenticación. Si falla una actualización, los sensores se marcan como no disponibles y se reintenta automáticamente. Si el alumno todavía no tiene fichas, no se crea la entrada.
 
@@ -28,6 +44,8 @@ Si no necesitas historial de estos sensores, puedes excluir sus entidades de Rec
 ## Actualización desde el script anterior
 
 Desde la versión 0.3.2 el proyecto solo distribuye la integración de Home Assistant. Si usabas el script externo o el contenedor Docker, configura primero la integración nativa y después detén el script o contenedor. Los sensores creados mediante la API REST no se migran automáticamente al registro de entidades: comprueba los identificadores de tus tarjetas y automatizaciones.
+
+<!-- ha-marketplace:exclude-start -->
 
 ## Pruebas para desarrollo
 
@@ -47,6 +65,8 @@ python3 -m venv .venv
 
 - [Arquitectura, flujo y contrato de datos](docs/architecture.md).
 - [Estructura, desarrollo, publicación y recuperación](docs/maintenance.md).
+
+<!-- ha-marketplace:exclude-end -->
 
 ## Seguridad, contribuciones y licencia
 

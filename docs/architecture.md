@@ -2,7 +2,7 @@
 
 ## Alcance y flujo
 
-KinderClose es una integración personalizada de Home Assistant, distribuida con la estructura que espera HACS. No incluye servidor propio ni base de datos. Para cada alumno configurado se crea una entrada y un coordinador independiente:
+KinderClose es una integración personalizada de Home Assistant, distribuida con la estructura que esperan el Marketplace de Home Assistant y HACS. No incluye servidor propio ni base de datos. Para cada alumno configurado se crea una entrada y un coordinador independiente:
 
 ```mermaid
 flowchart LR
