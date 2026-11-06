@@ -2,6 +2,7 @@
 from unittest.mock import patch
 
 from homeassistant.config_entries import SOURCE_REAUTH, ConfigEntryState
+from homeassistant.helpers import device_registry as dr, entity_registry as er
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from conftest import DATA, USER_INPUT
@@ -25,7 +26,12 @@ async def test_setup_creates_sensors_and_unload_closes_session(hass, entry):
         assert hass.states.get("sensor.kinderclose_123_salida").state == "unknown"
         assert hass.states.get("sensor.kinderclose_123_sueno").state == "33"
         assert hass.states.get("sensor.kinderclose_123_deposiciones").state == "0"
-        assert hass.states.get("sensor.kinderclose_123_asistencia").attributes["friendly_name"] == "KinderClose 123 Attendance"
+        # Home Assistant 2026.11 cambia cómo se compone friendly_name y prevé retirarlo: se comprueban
+        # por separado el nombre traducido de la entidad y el nombre del dispositivo.
+        registry_entry = er.async_get(hass).async_get("sensor.kinderclose_123_asistencia")
+        assert registry_entry.translation_key == "asistencia"
+        assert dr.async_get(hass).async_get(registry_entry.device_id).name == "KinderClose 123"
+        assert hass.states.get("sensor.kinderclose_123_asistencia").attributes["friendly_name"].endswith("Attendance")
 
         ultima = hass.states.get("sensor.kinderclose_123_ultima_ficha")
         assert ultima.attributes["fichas"] == DATA["fichas"]

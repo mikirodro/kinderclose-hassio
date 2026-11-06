@@ -2,7 +2,7 @@
 
 ## Versiones compatibles
 
-Las correcciones de seguridad se preparan para la última versión publicada. Actualiza mediante HACS y reinicia Home Assistant para cargarla.
+Las correcciones de seguridad se preparan para la última versión publicada. Actualiza mediante el Marketplace de Home Assistant (o HACS en versiones anteriores a 2026.11) y reinicia Home Assistant para cargarla.
 
 ## Notificar una vulnerabilidad
 
