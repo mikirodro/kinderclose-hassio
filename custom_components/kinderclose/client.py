@@ -123,6 +123,41 @@ def parse_record(html, url):
     return record
 
 
+# Funciones puras que reciben HTML y devuelven datos. Analizar con BeautifulSoup
+# páginas de hasta MAX_RESPONSE_BYTES es costoso en Python puro: el cliente las
+# ejecuta siempre fuera del bucle de eventos (asyncio.to_thread) para no bloquear
+# Home Assistant.
+
+
+def parse_login_token(html):
+    """Token CSRF del formulario de acceso, o ``None`` si no existe o está vacío."""
+    token = BeautifulSoup(html, "html.parser").select_one('input[name="_token"]')
+    return token["value"] if token is not None and token.get("value") else None
+
+
+def has_password_field(html):
+    """Si la página sigue mostrando un campo de contraseña (acceso rechazado)."""
+    return BeautifulSoup(html, "html.parser").select_one('input[name="password"]') is not None
+
+
+def parse_pupils(html):
+    """Alumnos del listado: ``{id: [nombres de sus enlaces]}``."""
+    pupils = {}
+    for anchor in BeautifulSoup(html, "html.parser").select("a[href]"):
+        url = urljoin(BASE, anchor["href"])
+        match = re.fullmatch(re.escape(BASE) + r"/familiar/alumno/(\d+)", url)
+        if match:
+            pupils.setdefault(match[1], []).append(anchor.get_text(" ", strip=True))
+    return pupils
+
+
+def parse_record_links(html, pupil_url):
+    """Enlaces a fichas del perfil del alumno, sin duplicados y en el orden de la página."""
+    pattern = re.escape(pupil_url) + r"/ficha/\d+"
+    links = (urljoin(BASE, a["href"]) for a in BeautifulSoup(html, "html.parser").select("a[href]"))
+    return list(dict.fromkeys(url for url in links if re.fullmatch(pattern, url)))
+
+
 class AuthenticationError(ValueError):
     """Credentials were rejected by KinderClose."""
 
@@ -211,11 +246,11 @@ class KinderClose:
         self.session.cookie_jar.clear()
         self.logged_in = False
         _, html = await self._request("GET", BASE + "/auth/login")
-        token = BeautifulSoup(html, "html.parser").select_one('input[name="_token"]')
-        if token is None or not token.get("value"):
+        token = await asyncio.to_thread(parse_login_token, html)
+        if token is None:
             raise ParseError("No se encuentra el formulario de acceso.")
-        final_url, html = await self._request("POST", BASE + "/auth/login", data={"_token": token["value"], "email": user, "password": password})
-        if "/auth/login" in final_url or BeautifulSoup(html, "html.parser").select_one('input[name="password"]'):
+        final_url, html = await self._request("POST", BASE + "/auth/login", data={"_token": token, "email": user, "password": password})
+        if "/auth/login" in final_url or await asyncio.to_thread(has_password_field, html):
             raise AuthenticationError("KinderClose ha rechazado el inicio de sesión.")
         self.logged_in = True
         self._generation += 1
@@ -241,13 +276,7 @@ class KinderClose:
             return await self._fetch(pupil_id, pupil_name, limit)
 
     async def _fetch(self, pupil_id, pupil_name, limit):
-        listing = BeautifulSoup(await self._get(BASE + "/familiar/alumno"), "html.parser")
-        pupils = {}
-        for anchor in listing.select("a[href]"):
-            url = urljoin(BASE, anchor["href"])
-            match = re.fullmatch(re.escape(BASE) + r"/familiar/alumno/(\d+)", url)
-            if match:
-                pupils.setdefault(match[1], []).append(anchor.get_text(" ", strip=True))
+        pupils = await asyncio.to_thread(parse_pupils, await self._get(BASE + "/familiar/alumno"))
         pupil_id = pupil_id.strip()
         if not pupil_id:
             name = normalize(pupil_name)
@@ -258,10 +287,9 @@ class KinderClose:
         if pupil_id not in pupils:
             raise PupilNotFound("El alumno configurado no aparece en esta cuenta.")
         pupil_url = BASE + "/familiar/alumno/" + pupil_id
-        profile = BeautifulSoup(await self._get(pupil_url), "html.parser")
-        links = list(dict.fromkeys(urljoin(BASE, a["href"]) for a in profile.select("a[href]") if re.fullmatch(re.escape(pupil_url) + r"/ficha/\d+", urljoin(BASE, a["href"]))))
+        links = await asyncio.to_thread(parse_record_links, await self._get(pupil_url), pupil_url)
         if not links:
             raise NoRecords("El alumno todavía no tiene fichas disponibles.")
-        records = [parse_record(await self._get(url), url) for url in links[:limit]]
+        records = [await asyncio.to_thread(parse_record, await self._get(url), url) for url in links[:limit]]
         records.sort(key=lambda r: r["fecha"], reverse=True)
         return {"alumno_id": pupil_id, "consultado_en": datetime.now(timezone.utc).isoformat(), "fichas": records}
