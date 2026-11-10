@@ -12,7 +12,7 @@ flowchart LR
     Sensors --> Recorder[Historial y copias según configuración de HA]
 ```
 
-El flujo de configuración comprueba las credenciales y resuelve el alumno. El coordinador consulta cada 15 minutos con un cliente `aiohttp` asíncrono, sin bloquear el bucle de Home Assistant. Las entradas con la misma cuenta comparten cliente, sesión e inicio de sesión (`account.py`); un candado evita inicios de sesión simultáneos y, si la sesión caduca, se renueva una sola vez. La sesión tiene sus propias cookies, separadas de la sesión compartida de Home Assistant, y se cierra cuando se descarga la última entrada que la usa. Las redirecciones se limitan al mismo origen HTTPS.
+El flujo de configuración comprueba las credenciales y resuelve el alumno. El coordinador consulta cada 15 minutos con un cliente `aiohttp` asíncrono. El análisis del HTML con BeautifulSoup se hace en funciones puras que el cliente ejecuta en un hilo (`asyncio.to_thread`), de modo que ni la red ni el análisis bloquean el bucle de Home Assistant. Las entradas con la misma cuenta comparten cliente, sesión e inicio de sesión (`account.py`); un candado evita inicios de sesión simultáneos y, si la sesión caduca, se renueva una sola vez. La sesión tiene sus propias cookies, separadas de la sesión compartida de Home Assistant, y se cierra cuando se descarga la última entrada que la usa. Las redirecciones se limitan al mismo origen HTTPS.
 
 La fuente es HTML de la web de KinderClose, no una API pública documentada. Los cambios de la web pueden romper la extracción; el parser rechaza páginas sin los paneles esenciales. Las pruebas usan respuestas simuladas, no verifican la web real.
 

@@ -1,13 +1,15 @@
 """Pruebas del cliente compartido, sin acceder a la red."""
 import asyncio
 import gzip
+import threading
 import unittest
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 from urllib.parse import urlparse
 
 import aiohttp
 from aiohttp import web
 
+from custom_components.kinderclose import client as client_module
 from custom_components.kinderclose.client import (
     AuthenticationError, CannotConnect, KinderClose, MAX_RESPONSE_BYTES, NoRecords, ParseError, PupilNotFound, SessionExpired,
 )
@@ -137,6 +139,22 @@ class ClientTests(unittest.IsolatedAsyncioTestCase):
         with self.assertRaises(ParseError):
             await KinderClose(session, "user", "password").fetch("123")
         self.assertEqual(session.methods(), ["GET"])
+
+    async def test_html_is_parsed_outside_the_event_loop(self):
+        """Analizar HTML es costoso: nunca debe bloquear el bucle de Home Assistant."""
+        loop_thread = threading.get_ident()
+        parse_threads = []
+        real_soup = client_module.BeautifulSoup
+
+        def recording_soup(*args, **kwargs):
+            parse_threads.append(threading.get_ident())
+            return real_soup(*args, **kwargs)
+
+        with patch.object(client_module, "BeautifulSoup", recording_soup):
+            await KinderClose(FakeSession(routes()), "user", "password").fetch("123")
+        # Formulario de acceso, respuesta del login, listado, perfil y una ficha.
+        self.assertEqual(len(parse_threads), 5)
+        self.assertNotIn(loop_thread, parse_threads)
 
 
 class NetworkErrorTests(unittest.IsolatedAsyncioTestCase):

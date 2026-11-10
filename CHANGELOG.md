@@ -2,6 +2,15 @@
 
 Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/). La sección de cada versión se usa como notas de la release de GitHub.
 
+## [0.5.3]
+
+### Rendimiento
+
+- El análisis del HTML de KinderClose (formulario de acceso, listado de alumnos, perfil y fichas) se ejecuta fuera del bucle de eventos de Home Assistant, en un hilo con `asyncio.to_thread`. Antes, cada consulta cada 15 minutos analizaba hasta siete páginas de hasta 2 MiB en el bucle y podía bloquear durante ese tiempo al resto de integraciones.
+- El análisis se separa en funciones puras que reciben el HTML y devuelven los datos (`parse_login_token`, `has_password_field`, `parse_pupils`, `parse_record_links` y `parse_record`).
+
+No cambian los sensores, sus identificadores ni sus atributos.
+
 ## [0.5.2]
 
 ### Mantenimiento
