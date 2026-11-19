@@ -8,17 +8,17 @@ Integración para consultar las fichas de KinderClose desde Home Assistant. Crea
 
 ### Con el Marketplace (Home Assistant 2026.11 o posterior)
 
-1. En **Ajustes → Marketplace**, añade `https://github.com/mikirodro/kinderclose-hassio` como repositorio personalizado de tipo **Integración**. Los repositorios personalizados requieren iniciar sesión con GitHub desde el Marketplace.
-2. Busca KinderClose, descárgalo y reinicia Home Assistant.
+1. Abre **Ajustes → Marketplace** y busca **KinderClose**.
+2. Descárgalo y reinicia Home Assistant.
 
 Si ya lo tenías instalado con HACS, al actualizar a Home Assistant 2026.11 pasa automáticamente al Marketplace: sigue instalado, conserva su configuración y recibe actualizaciones.
 
 ### Con HACS (Home Assistant anterior a 2026.11)
 
-1. En HACS, abre **Repositorios personalizados** y añade `https://github.com/mikirodro/kinderclose-hassio` como **Integración**.
-2. Busca KinderClose, descárgalo y reinicia Home Assistant.
+1. Abre **HACS** y busca **KinderClose**.
+2. Descárgalo y reinicia Home Assistant.
 
-HACS no se puede instalar en Home Assistant 2026.11 o posterior.
+KinderClose está incluido en el catálogo por defecto de HACS, así que no hace falta añadirlo como repositorio personalizado. HACS no se puede instalar en Home Assistant 2026.11 o posterior.
 
 ### Manual
 
