@@ -2,6 +2,18 @@
 
 Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/). La sección de cada versión se usa como notas de la release de GitHub.
 
+## [0.5.4]
+
+### Documentación
+
+- KinderClose ya forma parte del catálogo por defecto de HACS. El README explica la instalación buscando la integración directamente en **HACS** o en **Ajustes → Marketplace**, sin añadirla como repositorio personalizado, tal como se pidió en la revisión de HACS.
+
+### Mantenimiento
+
+- Se actualiza `ruff` de 0.17.3 a 0.17.4 en las herramientas de pruebas (Dependabot, #26).
+
+No cambian los sensores, sus identificadores ni sus atributos.
+
 ## [0.5.3]
 
 ### Rendimiento
