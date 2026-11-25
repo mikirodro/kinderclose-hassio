@@ -1,3 +1,5 @@
+**Español** · [English](README.en.md)
+
 # KinderClose para Home Assistant
 
 ![KinderClose](custom_components/kinderclose/brand/logo.png)
