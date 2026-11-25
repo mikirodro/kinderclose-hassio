@@ -1,7 +1,7 @@
 """Sensores nativos de KinderClose."""
 from datetime import date
 
-from homeassistant.components.sensor import SensorEntity, SensorDeviceClass
+from homeassistant.components.sensor import SensorDeviceClass, SensorEntity
 from homeassistant.const import UnitOfTime
 from homeassistant.helpers.device_registry import DeviceEntryType, DeviceInfo
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
@@ -11,8 +11,9 @@ from .const import CONF_PUPIL_ID, DOMAIN
 # Los nombres visibles están en strings.json y translations/, bajo entity.sensor.<clave>.
 SENSORS = (
     "ultima_ficha", "asistencia", "entrada", "salida", "desayuno", "primero",
-    "segundo", "postre", "merienda", "sueno", "deposiciones",
+    "segundo", "postre", "merienda", "sueno", "deposiciones", "biberones", "recordatorios",
 )
+MEALS = ("desayuno", "primero", "segundo", "postre", "merienda")
 
 # Solo el coordinador consulta KinderClose; las entidades no hacen E/S propia.
 PARALLEL_UPDATES = 0
@@ -26,7 +27,7 @@ class KinderCloseSensor(CoordinatorEntity, SensorEntity):
     _attr_has_entity_name = True
     # Datos detallados de menores: visibles en el estado actual, pero fuera de la base
     # de datos del historial (recorder); otras integraciones aún pueden acceder a ellos.
-    _unrecorded_attributes = frozenset({"fichas", "consultado_en", "sesiones", "detalles", "url_ficha"})
+    _unrecorded_attributes = frozenset({"ficha", "consultado_en", "sesiones", "detalles", "elementos", "url_ficha"})
 
     def __init__(self, coordinator, key):
         super().__init__(coordinator)
@@ -45,29 +46,48 @@ class KinderCloseSensor(CoordinatorEntity, SensorEntity):
             self._attr_native_unit_of_measurement = UnitOfTime.MINUTES
 
     @property
+    def _record(self):
+        """Ficha más reciente, o ``None`` si no hay ninguna en los últimos días."""
+        return self.coordinator.data["ficha"]
+
+    @property
     def native_value(self):
-        record = self.coordinator.data["fichas"][0]
+        record = self._record
+        if record is None:
+            return None
         if self.key == "ultima_ficha":
             return date.fromisoformat(record["fecha"])
         if self.key == "asistencia":
-            return "ausente" if record["presencia"]["ausente"] in ("Sí", "Si") else "presente"
+            return "ausente" if record["presencia"]["ausente"] else "presente"
         if self.key in ("entrada", "salida"):
-            return record["presencia"].get("hora_" + self.key)
+            return record["presencia"]["hora_" + self.key]
         if self.key == "sueno":
             return record["sueno_minutos"]
-        if self.key == "deposiciones":
-            return len(record["deposiciones"])
-        return record["comidas"].get(self.key)
+        if self.key in ("deposiciones", "biberones", "recordatorios"):
+            return len(record[self.key])
+        return record["comidas"][self.key]
 
     @property
     def extra_state_attributes(self):
-        data = self.coordinator.data
-        record = data["fichas"][0]
+        record = self._record
+        if record is None:
+            attributes = {"fecha_ficha": None, "url_ficha": None}
+            if self.key == "ultima_ficha":
+                attributes["consultado_en"] = self.coordinator.data["consultado_en"]
+            return attributes
         attributes = {"fecha_ficha": record["fecha"], "url_ficha": record["url"]}
         if self.key == "ultima_ficha":
-            attributes.update(fichas=data["fichas"], consultado_en=data["consultado_en"])
+            attributes.update(ficha=record, consultado_en=self.coordinator.data["consultado_en"])
+        elif self.key == "asistencia":
+            attributes["ausencia_justificada"] = record["presencia"]["ausencia_justificada"] if record["presencia"]["ausente"] else None
+        elif self.key in ("entrada", "salida"):
+            attributes[self.key + "_tarde"] = record["presencia"]["hora_" + self.key + "_tarde"]
         elif self.key == "sueno":
             attributes["sesiones"] = record["sueno"]
-        elif self.key == "deposiciones":
-            attributes["detalles"] = record["deposiciones"]
+        elif self.key in ("deposiciones", "biberones"):
+            attributes["detalles"] = record[self.key]
+            if self.key == "deposiciones":
+                attributes["control_esfinter"] = record["control_esfinter"]
+        elif self.key == "recordatorios":
+            attributes["elementos"] = record["recordatorios"]
         return attributes

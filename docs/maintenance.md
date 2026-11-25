@@ -4,21 +4,33 @@
 
 | Ruta | Responsabilidad |
 | --- | --- |
-| `custom_components/kinderclose/` | Integración distribuida: configuración, cliente HTTP y parser, coordinador, sensores, manifiesto, traducciones y marca. Mantener esta ruta para el Marketplace, HACS y la instalación manual. |
-| `tests/` | Pruebas unitarias del cliente y del parser (`unittest`) con datos ficticios. |
+| `custom_components/kinderclose/` | Integración distribuida: configuración, cliente de la API y normalización, coordinador, sensores, manifiesto, traducciones y marca. Mantener esta ruta para el Marketplace, HACS y la instalación manual. |
+| `tests/` | Pruebas unitarias del cliente de la API y del parser (`unittest`) con respuestas JSON ficticias. |
+| `scripts/probe_api.py` | Comprobación manual de la API real con una cuenta: muestra solo la estructura de las respuestas. No se distribuye. |
+| `docs/api.md` | Endpoints y campos de la API obtenidos por ingeniería inversa de la app oficial. |
 | `tests/ha/` | Pruebas con Home Assistant (`pytest-homeassistant-custom-component`): configuración, reautenticación, sensores y descarga. |
 | `.github/workflows/validate.yaml` | Ruff, pruebas (versión mínima y versión fijada de Home Assistant), hassfest y validación del Marketplace (`hacs/action`, sin comprobaciones ignoradas). Los jobs `tests` y `hassfest` son checks obligatorios de `main`. |
 | `.github/workflows/release.yaml` | Publicación manual: valida el commit y crea el tag y la release. |
 | `CHANGELOG.md` | Cambios por versión; su sección es el texto de la release. |
 | `hacs.json` | Metadatos y versión mínima declarada para el Marketplace y HACS. El Marketplace lo lee de la raíz en cada versión que instala. |
-| `requirements.txt`, `requirements_test.txt` | Dependencias del cliente y de la CI; el manifiesto declara las de ejecución de la integración. |
+| `requirements.txt`, `requirements_test.txt` | Dependencias del cliente y de la CI. La integración no tiene dependencias de ejecución: `aiohttp` lo aporta Home Assistant. |
 | `assets/` | Recursos para documentación; no es el directorio de la integración. |
 
-Para preparar el entorno y ejecutar las pruebas consulta el [README](../README.md#pruebas-para-desarrollo). Las pruebas de `tests/ha` arrancan un Home Assistant de pruebas con respuestas simuladas, pero no comprueban la web real ni una instalación completa. Hassfest valida metadatos, no el funcionamiento completo. Los rangos de dependencias permiten versiones distintas entre instalaciones; un resultado local no garantiza que se haya probado toda la matriz de versiones.
+Para preparar el entorno y ejecutar las pruebas consulta el [README](../README.md#pruebas-para-desarrollo). Las pruebas de `tests/ha` arrancan un Home Assistant de pruebas con respuestas simuladas, pero no comprueban la API real ni una instalación completa. Hassfest valida metadatos, no el funcionamiento completo. Los rangos de dependencias permiten versiones distintas entre instalaciones; un resultado local no garantiza que se haya probado toda la matriz de versiones.
 
 La CI ejecuta pruebas simuladas con Home Assistant 2025.1.0, el mínimo de `hacs.json`, y con la versión que fija `pytest-homeassistant-custom-component`. Ese paquete va unido a una versión concreta de Home Assistant: no se puede instalar otra encima (con 2026.11 falla al importar `httpx`). Para probar una versión nueva, espera a que Dependabot proponga el paquete correspondiente. Antes de publicar, prueba además la instalación desde el Marketplace (y por HACS en una versión anterior a 2026.11), configuración, actualización, reautenticación y descarga en entornos aislados. Documenta los resultados; si el mínimo no funciona, fija la primera versión realmente compatible y comunica el impacto. Para probar KinderClose usa una cuenta de desarrollo autorizada y nunca guardes respuestas reales ni credenciales en artefactos.
 
 La acción HACS fijada por SHA ejecuta la imagen `ghcr.io/hacs/action:main`, cuya etiqueta puede cambiar. Revisa su origen y digest periódicamente; fijar el SHA de la acción no fija esa imagen. La versión de `aiohttp` de `requirements.txt` corresponde a pruebas independientes: Home Assistant controla la versión de su propia instalación.
+
+## Comprobar la API real
+
+La API no es pública (ver [api.md](api.md)). Cuando KinderClose publique una versión nueva de su app, o si la integración deja de funcionar, comprueba la API con una cuenta autorizada:
+
+```sh
+KINDERCLOSE_EMAIL=... KINDERCLOSE_PASSWORD=... .venv/bin/python scripts/probe_api.py
+```
+
+El script lee las credenciales del entorno, muestra solo la estructura de las respuestas (claves, tipos y formatos con letras y dígitos enmascarados) y cierra la sesión del dispositivo al terminar. Si cambian los campos, actualiza `client.py`, sus pruebas y `docs/api.md`. Para volver a extraer la API de la app, descarga el paquete `com.kinderclose.familiar`, descomprímelo en un directorio aislado y busca `apiUrl` en `assets/public/*.js`. Las llamadas están en los servicios de Angular y los modelos, en los componentes `*-input-view`. No publiques el paquete ni fragmentos de su código.
 
 ## Marketplace de Home Assistant
 
@@ -34,8 +46,8 @@ Para aparecer en el catálogo por defecto, el propietario envía desde su cuenta
 
 ## Revisión de cambios
 
-1. Trabaja en una rama y revisa el comportamiento actual y los cambios de dependencias. No incluyas credenciales, HTML real ni datos de alumnos.
-2. Añade pruebas con datos ficticios cuando cambien el parser, las peticiones o la semántica de los datos. Ejecuta las pruebas y comprueba los resultados de Actions.
+1. Trabaja en una rama y revisa el comportamiento actual y los cambios de dependencias. No incluyas credenciales, tokens, respuestas reales ni datos de alumnos.
+2. Añade pruebas con datos ficticios cuando cambien la normalización, las peticiones o la semántica de los datos. Ejecuta las pruebas y comprueba los resultados de Actions.
 3. Para cambios de entidades, configuración, atributos o unidades, documenta el impacto y la migración de automatizaciones y tarjetas. No cambies identificadores estables sin una migración explícita.
 4. Para cambios que afecten al funcionamiento de Home Assistant, prueba también en una instalación de desarrollo apropiada antes de publicar. No uses datos reales en los artefactos de prueba.
 

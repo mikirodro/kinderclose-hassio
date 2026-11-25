@@ -1,190 +1,210 @@
-"""Cliente compartido de KinderClose, independiente de Home Assistant."""
+"""Cliente de la API JSON de KinderClose (v3), independiente de Home Assistant.
+
+KinderClose no publica una API documentada. Los endpoints, cabeceras y campos de
+este módulo se han obtenido por ingeniería inversa de la app oficial «KinderClose
+Familiar» (Ionic/Angular), que usa la misma API; ver docs/api.md. Sustituye al
+análisis del HTML de la web: una consulta normal es una única petición JSON.
+"""
 import asyncio
-from datetime import date, datetime, timezone
+from datetime import date, datetime, time, timedelta, timezone
+import json
 import re
-import unicodedata
-from urllib.parse import urljoin, urlparse
 
 import aiohttp
-from bs4 import BeautifulSoup
 
 BASE = "https://app.kinderclose.com"
+API = BASE + "/api/v3"
 TIMEOUT = aiohttp.ClientTimeout(total=30)
-MAX_RESPONSE_BYTES = 2 * 1024 * 1024  # Límite del contenido descomprimido.
-REDIRECT_STATUSES = (301, 302, 303, 307, 308)
-# Fechas en formato ISO (2026-10-07) o español (7/10/2026).
-DATE = re.compile(r"\b(?:(\d{4})-(\d{2})-(\d{2})|(\d{1,2})/(\d{1,2})/(\d{4}))\b")
+MAX_RESPONSE_BYTES = 1024 * 1024  # Límite del contenido descomprimido; una ficha ocupa unos pocos KiB.
+# Días que se retrocede, como máximo, para encontrar la última ficha (cubre fines de semana y puentes).
+LOOKBACK_DAYS = 7
+# Cada cuánto se vuelve a comprobar que el alumno sigue en la cuenta.
+PUPILS_TTL = timedelta(hours=6)
+
+# Valores que la app envía al iniciar sesión (enumeraciones de la app oficial).
+PROVIDER_LOCAL = 1
+DEVICE_TYPE_WEB = 1
+DEVICE_NAME = "Home Assistant"
+
+# Textos de la app oficial para los valores numéricos de la ficha.
+MEALS = ("desayuno", "primero", "segundo", "postre", "merienda")
+FOOD = {1: "Nada", 2: "Poco", 3: "Bastante", 4: "Todo"}
+DIAPER = {1: "Deposición", 2: "Pis"}
+REMINDERS = {1: "Toallitas", 2: "Pañales", 3: "Agua", 4: "Muda"}
+YES_NO = {0: "No", 1: "Sí"}
+TIME = re.compile(r"(\d{1,2}):(\d{2})(?::\d{2}(?:\.\d+)?)?")
 
 
-def normalize(value):
-    return " ".join(unicodedata.normalize("NFKD", value).encode("ascii", "ignore").decode().lower().split())
-
-
-def nullable(value):
-    return value.strip() if value.strip() not in ("", "--") else None
-
-
-class ParseError(ValueError):
-    """La página de KinderClose no tiene la estructura esperada."""
-
-
-class PupilNotFound(ValueError):
-    """El alumno configurado no se puede identificar en la cuenta."""
-
-
-class NoRecords(ValueError):
-    """El alumno existe pero todavía no tiene fichas."""
+class AuthenticationError(ValueError):
+    """KinderClose ha rechazado las credenciales."""
 
 
 class CannotConnect(Exception):
     """KinderClose no responde o ha devuelto un error HTTP."""
 
 
-def dates_in(text):
-    """Fechas válidas distintas del texto, en orden de aparición."""
-    found = []
-    for match in DATE.finditer(text):
-        year, month, day = match.group(1, 2, 3) if match[1] else match.group(6, 5, 4)
-        try:
-            value = date(int(year), int(month), int(day))
-        except ValueError:
-            continue
-        if value not in found:
-            found.append(value)
-    return found
+class ParseError(ValueError):
+    """La respuesta de KinderClose no tiene el formato esperado."""
 
 
-def record_date(soup, html):
-    """Fecha de la ficha, de la fuente más fiable a la menos fiable.
-
-    1. ``defaultDate`` del calendario de la página.
-    2. La fecha de los encabezados, si solo hay una.
-    3. La fecha de todo el texto, si solo hay una.
-
-    Si una fuente contiene varias fechas distintas (por ejemplo, la de nacimiento
-    del alumno) se considera ambigua: se rechaza la ficha antes que mostrar una
-    fecha equivocada.
-    """
-    match = re.search(r"defaultDate:\s*['\"](\d{4}-\d{2}-\d{2})", html)
-    calendar = dates_in(match[1]) if match else []
-    if calendar:
-        return calendar[0]
-    headings = " ".join(tag.get_text(" ", strip=True) for tag in soup.select("title, h1, h2, h3, h4, .page-header"))
-    for text in (headings, soup.get_text(" ")):
-        found = dates_in(text)
-        if len(found) == 1:
-            return found[0]
-    raise ParseError("No se ha podido identificar sin ambigüedad la fecha de la ficha.")
+class PupilNotFound(ValueError):
+    """El alumno configurado no está en la cuenta."""
 
 
-def parse_record(html, url):
-    soup = BeautifulSoup(html, "html.parser")
-    panels = {}
-    for panel in soup.select(".panel"):
-        heading = panel.select_one(".panel-title")
-        if heading:
-            panels[normalize(heading.get_text(" ", strip=True))] = panel
-    if not {"presencia", "comidas", "deposicion"}.issubset(panels):
-        raise ParseError("La ficha no contiene los paneles esperados; puede haber cambiado la web.")
-    record = {"fecha": record_date(soup, html).isoformat(), "url": url}
-    for section in ("presencia", "comidas"):
-        values = {}
-        for paragraph in panels[section].select("p"):
-            label = paragraph.find("strong")
-            if label:
-                key = normalize(label.get_text()).replace(" ", "_")
-                label_text = label.get_text(" ", strip=True)
-                value = paragraph.get_text(" ", strip=True)[len(label_text):].lstrip(" :")
-                values[key] = nullable(value)
-        record[section] = values
-    if record["presencia"].get("ausente") not in ("Sí", "Si", "No"):
-        raise ParseError("No se ha podido interpretar la asistencia.")
-    record["sueno"] = []
-    if "dormir" in panels:
-        for row in panels["dormir"].select("tbody tr"):
-            cells = row.find_all("td")
-            if len(cells) == 2:
-                record["sueno"].append(dict(zip(("desde", "hasta"), (nullable(c.get_text(strip=True)) for c in cells), strict=True)))
-    minutes = 0
-    complete = True
-    for nap in record["sueno"]:
-        if not nap["desde"] or not nap["hasta"]:
-            complete = False
-            continue
-        start = datetime.strptime(nap["desde"], "%H:%M")
-        end = datetime.strptime(nap["hasta"], "%H:%M")
-        minutes += int((end - start).total_seconds() / 60) % (24 * 60)
-    record["sueno_minutos"] = minutes if complete and record["sueno"] else None
-    record["deposiciones"] = []
-    for row in panels["deposicion"].select("tbody tr"):
-        cells = row.find_all("td")
-        if len(cells) == 3:
-            record["deposiciones"].append(dict(zip(("tipo", "hora", "info"), (nullable(c.get_text(" ", strip=True)) for c in cells), strict=True)))
-    return record
+class SessionExpired(Exception):
+    """El token ya no es válido y hay que volver a iniciar sesión."""
 
 
-# Funciones puras que reciben HTML y devuelven datos. Analizar con BeautifulSoup
-# páginas de hasta MAX_RESPONSE_BYTES es costoso en Python puro: el cliente las
-# ejecuta siempre fuera del bucle de eventos (asyncio.to_thread) para no bloquear
-# Home Assistant.
+# Normalización de valores. La API devuelve números, cadenas o booleanos según el
+# campo; las funciones toleran las variantes y devuelven None si no hay dato.
 
 
-def parse_login_token(html):
-    """Token CSRF del formulario de acceso, o ``None`` si no existe o está vacío."""
-    token = BeautifulSoup(html, "html.parser").select_one('input[name="_token"]')
-    return token["value"] if token is not None and token.get("value") else None
+def _int(value):
+    if isinstance(value, bool):
+        return int(value)
+    try:
+        return int(str(value).strip())
+    except (TypeError, ValueError):
+        return None
 
 
-def has_password_field(html):
-    """Si la página sigue mostrando un campo de contraseña (acceso rechazado)."""
-    return BeautifulSoup(html, "html.parser").select_one('input[name="password"]') is not None
+def _flag(value):
+    if isinstance(value, str):
+        return value.strip().lower() in ("1", "true", "si", "sí", "s", "yes")
+    return bool(value)
 
 
-def parse_pupils(html):
-    """Alumnos del listado: ``{id: [nombres de sus enlaces]}``."""
+def _text(value):
+    text = str(value).strip() if value is not None else ""
+    return text if text not in ("", "--") else None
+
+
+def _local(value, tz):
+    """Fecha y hora de un texto ISO, en la zona ``tz`` si trae zona; ``None`` si no lo es."""
+    text = _text(value)
+    if text is None:
+        return None
+    try:
+        moment = datetime.fromisoformat(text.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if moment.tzinfo is not None:
+        moment = moment.astimezone(tz)
+    return moment
+
+
+def parse_time(value, tz=None):
+    """Hora ``HH:MM`` de una hora suelta (``08:30:00``) o de una fecha y hora ISO."""
+    moment = _local(value, tz)
+    if moment is not None:
+        return moment.strftime("%H:%M")
+    match = TIME.fullmatch(_text(value) or "")
+    if match and int(match[1]) < 24:
+        return f"{int(match[1]):02d}:{match[2]}"
+    return None
+
+
+def parse_date(value, tz=None):
+    """Fecha de la ficha. Laravel serializa las fechas en UTC: se convierten a ``tz``."""
+    moment = _local(value, tz)
+    if moment is not None:
+        return moment.date()
+    try:
+        return date.fromisoformat((_text(value) or "")[:10])
+    except ValueError:
+        return None
+
+
+def _minutes(start, end):
+    """Minutos entre dos horas ``HH:MM``, admitiendo el cruce de medianoche."""
+    first, second = (datetime.combine(date.min, time.fromisoformat(value)) for value in (start, end))
+    return int((second - first).total_seconds() // 60) % (24 * 60)
+
+
+def _items(value):
+    return [item for item in value if isinstance(item, dict)] if isinstance(value, list) else []
+
+
+def _reminder(item):
+    if isinstance(item, dict):
+        return _text(item.get("label")) or REMINDERS.get(_int(item.get("id")))
+    return REMINDERS.get(_int(item))
+
+
+def parse_record(data, pupil_id, tz=None):
+    """Convierte una ficha de la API en el diccionario que usan los sensores."""
+    day = parse_date(data.get("fecha"), tz)
+    if day is None:
+        raise ParseError("La ficha de KinderClose no tiene una fecha válida.")
+    naps = [{"desde": parse_time(n.get("hora_desde"), tz), "hasta": parse_time(n.get("hora_hasta"), tz)} for n in _items(data.get("lista_dormir"))]
+    complete = bool(naps) and all(n["desde"] and n["hasta"] for n in naps)
+    record_id = _int(data.get("id"))
+    return {
+        "fecha": day.isoformat(),
+        "url": f"{BASE}/familiar/alumno/{pupil_id}/ficha/{record_id}" if record_id is not None else None,
+        "presencia": {
+            "ausente": _flag(data.get("ausente")),
+            "ausencia_justificada": _flag(data.get("ausencia_justificada")),
+            **{key: parse_time(data.get(key), tz) for key in ("hora_entrada", "hora_salida", "hora_entrada_tarde", "hora_salida_tarde")},
+        },
+        "comidas": {meal: FOOD.get(_int(data.get("comida_" + meal))) for meal in MEALS},
+        "sueno": naps,
+        "sueno_minutos": sum(_minutes(n["desde"], n["hasta"]) for n in naps) if complete else None,
+        "deposiciones": [
+            {"tipo": DIAPER.get(_int(d.get("tipo"))), "hora": parse_time(d.get("hora_desde"), tz), "info": _text(d.get("info"))}
+            for d in _items(data.get("lista_deposicion"))
+        ],
+        "biberones": [{"hora": parse_time(b.get("hora_desde"), tz), "cantidad": _int(b.get("cantidad"))} for b in _items(data.get("lista_biberon"))],
+        "recordatorios": [label for label in map(_reminder, data.get("recordatorios") or []) if label],
+        "control_esfinter": YES_NO.get(_int(data.get("control_esfinter"))),
+    }
+
+
+def parse_pupils(data):
+    """Alumnos de la cuenta: ``{id: {"id", "nombre", "nombre_completo", "activo"}}``."""
+    if not isinstance(data, list):
+        raise ParseError("KinderClose ha devuelto un listado de alumnos inesperado.")
     pupils = {}
-    for anchor in BeautifulSoup(html, "html.parser").select("a[href]"):
-        url = urljoin(BASE, anchor["href"])
-        match = re.fullmatch(re.escape(BASE) + r"/familiar/alumno/(\d+)", url)
-        if match:
-            pupils.setdefault(match[1], []).append(anchor.get_text(" ", strip=True))
+    for item in _items(data):
+        pupil_id = _int(item.get("id"))
+        if pupil_id is None:
+            continue
+        first = _text(item.get("nombre")) or ""
+        full = " ".join(part for part in (first, _text(item.get("apellidos"))) if part)
+        pupils[str(pupil_id)] = {"id": str(pupil_id), "nombre": first or str(pupil_id), "nombre_completo": full or str(pupil_id), "activo": item.get("enabled", True) is not False}
     return pupils
 
 
-def parse_record_links(html, pupil_url):
-    """Enlaces a fichas del perfil del alumno, sin duplicados y en el orden de la página."""
-    pattern = re.escape(pupil_url) + r"/ficha/\d+"
-    links = (urljoin(BASE, a["href"]) for a in BeautifulSoup(html, "html.parser").select("a[href]"))
-    return list(dict.fromkeys(url for url in links if re.fullmatch(pattern, url)))
-
-
-class AuthenticationError(ValueError):
-    """Credentials were rejected by KinderClose."""
-
-
-class SessionExpired(ValueError):
-    """La sesión de KinderClose ha caducado y hay que volver a iniciar sesión."""
+def _unwrap(data):
+    """Algunos recursos de Laravel envuelven la respuesta en ``{"data": ...}``."""
+    if isinstance(data, dict) and "data" in data and set(data) <= {"data", "meta", "links"}:
+        return data["data"]
+    return data
 
 
 class KinderClose:
     """Cliente asíncrono de una cuenta de KinderClose, compartible entre sus alumnos.
 
-    Reutiliza la sesión entre consultas y solo inicia sesión cuando no hay sesión
-    activa o KinderClose la ha invalidado, en lugar de enviar la contraseña en cada
-    consulta. Un candado evita que varias consultas simultáneas inicien sesión a la
-    vez. Todas las redirecciones se siguen manualmente y solo dentro de ``BASE``.
+    El inicio de sesión devuelve un token de dispositivo que se reutiliza mientras
+    KinderClose lo acepte; ``on_token`` permite guardarlo para no registrar un
+    dispositivo nuevo en cada reinicio. Un candado evita inicios de sesión
+    simultáneos y, si el token caduca, se renueva una sola vez. Las fichas de días
+    anteriores se guardan en memoria: en una consulta normal solo se pide la de hoy.
     El cliente es dueño de ``session`` y la cierra en ``close``.
     """
 
-    MAX_REDIRECTS = 5
-
-    def __init__(self, session, user, password):
+    def __init__(self, session, user, password, token=None, device_id=None, on_token=None):
         self.session = session
         self.user = user
         self.password = password
-        self.logged_in = False
+        self.token = token
+        self.device_id = device_id
+        self.on_token = on_token
         self._login_lock = asyncio.Lock()
         self._generation = 0
+        self._pupils = None
+        self._pupils_at = None
+        self._history = {}
 
     async def __aenter__(self):
         return self
@@ -193,103 +213,151 @@ class KinderClose:
         await self.close()
 
     async def close(self):
-        self.logged_in = False
         await self.session.close()
 
+    async def _request(self, method, path, params=None, payload=None, auth=True):
+        """Devuelve ``(estado, json)``. Nunca sigue redirecciones: la API no las usa."""
+        headers = {"Accept": "application/json"}
+        params = dict(params or {})
+        if auth:
+            headers["token"] = self.token
+            params["device_id"] = str(self.device_id)
+        try:
+            async with self.session.request(
+                method, API + path, params=params or None, json=payload, headers=headers, allow_redirects=False, timeout=TIMEOUT
+            ) as response:
+                body = bytearray()
+                async for chunk in response.content.iter_chunked(64 * 1024):
+                    body.extend(chunk)
+                    if len(body) > MAX_RESPONSE_BYTES:
+                        raise ParseError("La respuesta de KinderClose supera el tamaño permitido.")
+                status = response.status
+        except (aiohttp.ClientError, TimeoutError) as error:
+            raise CannotConnect("No se puede conectar con KinderClose.") from error
+        if not 200 <= status < 300:
+            return status, None
+        try:
+            return status, _unwrap(json.loads(body)) if body.strip() else None
+        except (UnicodeDecodeError, ValueError) as error:
+            raise ParseError("KinderClose no ha devuelto JSON válido.") from error
+
     @staticmethod
-    def _check_url(url):
-        parsed, base = urlparse(url), urlparse(BASE)
-        if parsed.scheme != base.scheme or parsed.netloc != base.netloc:
-            raise ValueError("Enlace de KinderClose no válido.")
+    def _raise_for_status(status):
+        if status == 429:
+            raise CannotConnect("KinderClose limita el número de peticiones; se reintentará más tarde.")
+        if not 200 <= status < 300:
+            raise CannotConnect(f"KinderClose ha respondido con el estado HTTP {status}.")
 
-    async def _request(self, method, url, data=None):
-        """Devuelve ``(url_final, html)`` sin salir nunca de ``BASE``, ni siquiera por redirección.
-
-        Las 307/308 conservarían el cuerpo (y con él la contraseña), así que cada
-        salto se valida antes de seguirlo.
-        """
-        for _ in range(self.MAX_REDIRECTS + 1):
-            self._check_url(url)
-            try:
-                async with self.session.request(method, url, data=data, allow_redirects=False, timeout=TIMEOUT) as response:
-                    location = response.headers.get("Location") if response.status in REDIRECT_STATUSES else None
-                    if location is None:
-                        response.raise_for_status()
-                        body = bytearray()
-                        async for chunk in response.content.iter_chunked(64 * 1024):
-                            body.extend(chunk)
-                            if len(body) > MAX_RESPONSE_BYTES:
-                                raise ParseError("La respuesta de KinderClose supera el tamaño permitido.")
-                        try:
-                            return url, body.decode(response.charset or "utf-8")
-                        except (LookupError, UnicodeDecodeError) as error:
-                            raise ParseError("No se puede interpretar la codificación de KinderClose.") from error
-            except (aiohttp.ClientError, TimeoutError) as error:
-                raise CannotConnect("No se puede conectar con KinderClose.") from error
-            if response.status not in (307, 308):
-                method, data = "GET", None
-            url = urljoin(url, location)
-        raise ValueError("KinderClose ha devuelto demasiadas redirecciones.")
-
-    async def _get(self, url):
-        final_url, html = await self._request("GET", url)
-        if "/auth/login" in final_url:
-            # No se toca logged_in: _ensure_login decide por generación si hay que renovar.
-            raise SessionExpired("KinderClose requiere iniciar sesión de nuevo.")
-        return html
+    async def _get(self, path, params=None):
+        """GET autenticado; ``None`` si el recurso no existe (404)."""
+        status, data = await self._request("GET", path, params)
+        if status == 401:
+            raise SessionExpired
+        if status == 404:
+            return None
+        if status == 403:
+            raise PupilNotFound("La cuenta no tiene acceso a este alumno.")
+        self._raise_for_status(status)
+        return data
 
     async def _login(self):
-        user, password = self.user, self.password
-        if not user or not password:
-            raise ValueError("Faltan el usuario o la contraseña de KinderClose.")
-        # Sesión limpia: no reutilizar cookies de una sesión caducada.
-        self.session.cookie_jar.clear()
-        self.logged_in = False
-        _, html = await self._request("GET", BASE + "/auth/login")
-        token = await asyncio.to_thread(parse_login_token, html)
-        if token is None:
-            raise ParseError("No se encuentra el formulario de acceso.")
-        final_url, html = await self._request("POST", BASE + "/auth/login", data={"_token": token, "email": user, "password": password})
-        if "/auth/login" in final_url or await asyncio.to_thread(has_password_field, html):
+        if not self.user or not self.password:
+            raise AuthenticationError("Faltan el usuario o la contraseña de KinderClose.")
+        payload = {
+            "email": self.user.strip(), "password": self.password, "provider": PROVIDER_LOCAL,
+            "deviceName": DEVICE_NAME, "deviceType": DEVICE_TYPE_WEB, "appVersion": None,
+        }
+        status, data = await self._request("POST", "/auth/login", payload=payload, auth=False)
+        if status in (400, 401, 403, 422):
             raise AuthenticationError("KinderClose ha rechazado el inicio de sesión.")
-        self.logged_in = True
+        self._raise_for_status(status)
+        if not isinstance(data, dict) or not data.get("token") or data.get("deviceId") is None:
+            raise ParseError("KinderClose no ha devuelto un token de sesión.")
+        self.token, self.device_id = str(data["token"]), data["deviceId"]
         self._generation += 1
+        if self.on_token:
+            self.on_token(self.token, self.device_id)
 
     async def _ensure_login(self, expired=None):
-        """Inicia sesión si hace falta y devuelve la generación de la sesión vigente.
+        """Inicia sesión si hace falta y devuelve la generación del token vigente.
 
         ``expired`` es la generación que ha caducado: si otra consulta ya la ha
-        renovado mientras se esperaba el candado, se reutiliza la nueva.
+        renovado mientras se esperaba el candado, se reutiliza el token nuevo.
         """
         async with self._login_lock:
-            if not self.logged_in or self._generation == expired:
+            if not self.token or self._generation == expired:
                 await self._login()
             return self._generation
 
-    async def fetch(self, pupil_id="", pupil_name="", limit=5):
+    async def _call(self, method, *args):
         generation = await self._ensure_login()
         try:
-            return await self._fetch(pupil_id, pupil_name, limit)
+            return await method(*args)
         except SessionExpired:
-            # La sesión ha caducado: un único reintento con la sesión renovada.
             await self._ensure_login(expired=generation)
-            return await self._fetch(pupil_id, pupil_name, limit)
+        try:
+            return await method(*args)
+        except SessionExpired as error:
+            raise CannotConnect("KinderClose rechaza la sesión recién iniciada.") from error
 
-    async def _fetch(self, pupil_id, pupil_name, limit):
-        pupils = await asyncio.to_thread(parse_pupils, await self._get(BASE + "/familiar/alumno"))
-        pupil_id = pupil_id.strip()
-        if not pupil_id:
-            name = normalize(pupil_name)
-            matches = [key for key, names in pupils.items() if name and any(normalize(n) == name for n in names)]
-            if len(matches) != 1:
-                raise PupilNotFound("El nombre no identifica un único alumno. Configura el ID del alumno.")
-            pupil_id = matches[0]
-        if pupil_id not in pupils:
+    async def pupils(self):
+        """Alumnos de la cuenta (inicia sesión si hace falta)."""
+        return await self._call(self._load_pupils)
+
+    async def _load_pupils(self):
+        self._pupils = parse_pupils(await self._get("/familiar/alumno"))
+        self._pupils_at = datetime.now(timezone.utc)
+        return self._pupils
+
+    async def fetch(self, pupil_id, today=None, tz=None, lookback=LOOKBACK_DAYS):
+        """Última ficha del alumno en los últimos ``lookback`` días, o ``None`` si no hay.
+
+        ``today`` y ``tz`` son la fecha y la zona horaria locales (las de Home
+        Assistant); por defecto, las del sistema.
+        """
+        pupil_id = str(pupil_id).strip()
+        if not pupil_id.isdigit():
+            raise PupilNotFound("El ID del alumno no es válido.")
+        return await self._call(self._fetch, pupil_id, today or date.today(), tz, lookback)
+
+    async def _fetch(self, pupil_id, today, tz, lookback):
+        stale = self._pupils is None or datetime.now(timezone.utc) - self._pupils_at > PUPILS_TTL
+        if stale or pupil_id not in self._pupils:
+            await self._load_pupils()
+        if pupil_id not in self._pupils:
             raise PupilNotFound("El alumno configurado no aparece en esta cuenta.")
-        pupil_url = BASE + "/familiar/alumno/" + pupil_id
-        links = await asyncio.to_thread(parse_record_links, await self._get(pupil_url), pupil_url)
-        if not links:
-            raise NoRecords("El alumno todavía no tiene fichas disponibles.")
-        records = [await asyncio.to_thread(parse_record, await self._get(url), url) for url in links[:limit]]
-        records.sort(key=lambda r: r["fecha"], reverse=True)
-        return {"alumno_id": pupil_id, "consultado_en": datetime.now(timezone.utc).isoformat(), "fichas": records}
+        # La ficha del día: ficha/null sin fecha es lo que pide la app al abrirla.
+        record = await self._record(pupil_id, None, tz)
+        oldest = today - timedelta(days=lookback - 1)
+        self._history = {key: value for key, value in self._history.items() if key[1] >= oldest}
+        day = today
+        while record is None and day > oldest:
+            day -= timedelta(days=1)
+            # Las fichas de días pasados no cambian: se piden una vez y se recuerdan.
+            if (pupil_id, day) not in self._history:
+                self._history[(pupil_id, day)] = await self._record(pupil_id, day, tz)
+            record = self._history[(pupil_id, day)]
+        return {
+            "alumno_id": pupil_id,
+            "alumno": self._pupils[pupil_id]["nombre"],
+            "consultado_en": datetime.now(timezone.utc).isoformat(),
+            "ficha": record,
+        }
+
+    async def _record(self, pupil_id, day, tz):
+        params = {"fecha": day.isoformat()} if day else None
+        data = await self._get(f"/familiar/alumno/{pupil_id}/ficha/null", params)
+        # Sin ficha: 404, cuerpo vacío o una ficha sin guardar (id nulo).
+        if not isinstance(data, dict) or not data.get("fecha") or ("id" in data and data["id"] is None):
+            return None
+        return parse_record(data, pupil_id, tz)
+
+    async def logout(self):
+        """Cierra la sesión del dispositivo en KinderClose. Los errores se ignoran."""
+        if not self.token:
+            return
+        try:
+            await self._request("POST", "/auth/logout", payload={})
+        except (CannotConnect, ParseError):
+            pass
+        self.token = None

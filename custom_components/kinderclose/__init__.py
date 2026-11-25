@@ -26,3 +26,10 @@ async def async_unload_entry(hass, entry):
     if unloaded:
         await async_release_client(hass, entry, entry.runtime_data.client)
     return unloaded
+
+
+async def async_remove_entry(hass, entry):
+    """Al borrar la integración, retira también su dispositivo de la cuenta de KinderClose."""
+    from .account import async_logout
+
+    await async_logout(hass, entry)
