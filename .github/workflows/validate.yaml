@@ -31,7 +31,7 @@ jobs:
           python-version: '3.14'
       - run: pip install -r requirements_test.txt
       - run: ruff check .
-      - name: Pruebas del cliente y del parser
+      - name: Pruebas del cliente de la API y del parser
         run: python -m unittest discover -s tests -v
       - name: Pruebas con Home Assistant
         run: pytest -v
@@ -57,7 +57,7 @@ jobs:
           python-version: '3.12'
       # Esta versión de pytest-homeassistant incluye HA 2025.1.0 y su aiohttp.
       # pycares 5 crea un hilo que no limpia el harness antiguo.
-      - run: pip install 'pytest-homeassistant-custom-component==0.13.201' 'beautifulsoup4>=4.15.0,<5' 'pycares==4.5.0'
+      - run: pip install 'pytest-homeassistant-custom-component==0.13.201' 'pycares==4.5.0'
       - run: python -m unittest discover -s tests -v
       - run: pytest -v
   hacs:

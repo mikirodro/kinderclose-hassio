@@ -1,36 +1,48 @@
-"""Pruebas del cliente compartido, sin acceder a la red."""
+"""Pruebas del cliente de la API y del parser, sin acceder a la red."""
 import asyncio
-import gzip
-import threading
+from datetime import date, datetime, timedelta, timezone
+import json
 import unittest
-from unittest.mock import MagicMock, patch
 from urllib.parse import urlparse
+from zoneinfo import ZoneInfo
 
 import aiohttp
-from aiohttp import web
 
-from custom_components.kinderclose import client as client_module
 from custom_components.kinderclose.client import (
-    AuthenticationError, CannotConnect, KinderClose, MAX_RESPONSE_BYTES, NoRecords, ParseError, PupilNotFound, SessionExpired,
+    API, AuthenticationError, CannotConnect, KinderClose, MAX_RESPONSE_BYTES, ParseError, PupilNotFound, parse_date, parse_pupils, parse_record, parse_time,
 )
-from test_kinderclose import fixture
 
-BASE = "https://app.kinderclose.com"
+MADRID = ZoneInfo("Europe/Madrid")
+TODAY = date(2026, 11, 25)
+LOGIN = {"userId": 9, "userName": "Familia", "deviceId": 77, "token": "tok-1", "centros": []}
+PUPILS = [
+    {"id": 123, "nombre": "Alumno", "apellidos": "De Prueba", "enabled": True},
+    {"id": 124, "nombre": "Hermano", "apellidos": "De Prueba", "enabled": False},
+]
 
-LOGIN_FORM = '<input name="_token" value="csrf">'
-LISTING = '<a href="/familiar/alumno/123">Alumno de prueba</a><a href="/familiar/alumno/124">Hermano de prueba</a>'
 
-
-def profile(pupil_id="123"):
-    return f'<a href="/familiar/alumno/{pupil_id}/ficha/456">Ver</a>'
+def ficha(**overrides):
+    """Ficha de la API con datos ficticios, en el formato de la app oficial."""
+    data = {
+        "id": 456, "alumno_id": 123, "fecha": "2026-11-24T23:00:00.000000Z",
+        "ausente": 0, "ausencia_justificada": 0,
+        "hora_entrada": "2026-11-25 08:55:00", "hora_salida": None, "hora_entrada_tarde": None, "hora_salida_tarde": None,
+        "comida_desayuno": 4, "comida_primero": 3, "comida_segundo": 2, "comida_postre": 1, "comida_merienda": 0,
+        "control_esfinter": -1,
+        "lista_biberon": [{"hora_desde": "2026-11-25T10:00:00.000000Z", "cantidad": "180"}],
+        "lista_dormir": [{"hora_desde": "2026-11-25 12:17:00", "hora_hasta": "2026-11-25 12:40:00"}, {"hora_desde": "14:00", "hora_hasta": "14:10"}],
+        "lista_deposicion": [{"tipo": 1, "hora_desde": "2026-11-25 11:00:00", "info": "Normal"}, {"tipo": 2, "hora_desde": None, "info": ""}],
+        "recordatorios": [2, {"id": 7, "label": "Crema"}],
+        "editable": False,
+    }
+    data.update(overrides)
+    return data
 
 
 class FakeResponse:
-    def __init__(self, html="", status=200, location=None):
-        self.html = html
+    def __init__(self, data=None, status=200, raw=None):
         self.status = status
-        self.headers = {"Location": location} if location else {}
-        self.charset = "utf-8"
+        self.body = raw if raw is not None else (b"" if data is None else json.dumps(data).encode())
         self.content = self
 
     async def __aenter__(self):
@@ -42,27 +54,24 @@ class FakeResponse:
     async def iter_chunked(self, size):
         # Cede el control para que las consultas simultáneas se intercalen de verdad.
         await asyncio.sleep(0)
-        data = self.html.encode("utf-8")
-        for offset in range(0, len(data), size):
-            yield data[offset:offset + size]
-
-    def raise_for_status(self):
-        if self.status >= 400:
-            raise aiohttp.ClientResponseError(MagicMock(), (), status=self.status)
+        for offset in range(0, len(self.body), size):
+            yield self.body[offset:offset + size]
 
 
 class FakeSession:
-    """Responde por "MÉTODO /ruta". Cada ruta consume su lista en orden y repite la última respuesta."""
+    """Responde por "MÉTODO /ruta" o "MÉTODO /ruta?fecha=...". Cada clave consume su lista y repite la última."""
 
     def __init__(self, routes):
         self.routes = {key: list(value) if isinstance(value, list) else [value] for key, value in routes.items()}
         self.calls = []
-        self.cookie_jar = MagicMock()
         self.closed = False
 
     def request(self, method, url, **kwargs):
         self.calls.append((method, url, kwargs))
-        queue = self.routes[f"{method} {urlparse(url).path}"]
+        path = urlparse(url).path.removeprefix(urlparse(API).path)
+        fecha = (kwargs.get("params") or {}).get("fecha")
+        key = f"{method} {path}" + (f"?fecha={fecha}" if fecha else "")
+        queue = self.routes.get(key, [FakeResponse(status=404)])
         item = queue.pop(0) if len(queue) > 1 else queue[0]
         if isinstance(item, BaseException):
             raise item
@@ -71,207 +80,198 @@ class FakeSession:
     async def close(self):
         self.closed = True
 
-    def methods(self):
-        return [method for method, _, _ in self.calls]
-
-    def posts(self):
-        return [call for call in self.calls if call[0] == "POST"]
+    def paths(self):
+        return [f"{m} {urlparse(u).path}" + (f"?fecha={k['params']['fecha']}" if (k.get('params') or {}).get("fecha") else "") for m, u, k in self.calls]
 
 
-def routes(**overrides):
-    """Rutas de una cuenta válida: login correcto, dos alumnos y una ficha cada uno."""
+def routes(overrides=None):
+    """Rutas de una cuenta válida; ``overrides`` sustituye o añade respuestas por "MÉTODO /ruta"."""
     result = {
-        "GET /auth/login": FakeResponse(LOGIN_FORM),
-        "POST /auth/login": FakeResponse(status=302, location="/inicio"),
-        "GET /inicio": FakeResponse("OK"),
-        "GET /familiar/alumno": FakeResponse(LISTING),
-        "GET /familiar/alumno/123": FakeResponse(profile("123")),
-        "GET /familiar/alumno/124": FakeResponse(profile("124")),
-        "GET /familiar/alumno/123/ficha/456": FakeResponse(fixture()),
-        "GET /familiar/alumno/124/ficha/456": FakeResponse(fixture()),
+        "POST /auth/login": FakeResponse(LOGIN),
+        "GET /familiar/alumno": FakeResponse(PUPILS),
+        "GET /familiar/alumno/123/ficha/null": FakeResponse(ficha()),
     }
-    result.update(overrides)
+    result.update(overrides or {})
     return result
 
 
-def expired():
-    """Respuesta de KinderClose cuando la sesión ha caducado: redirige al login."""
-    return FakeResponse(status=302, location="/auth/login")
+def client(session, **kwargs):
+    return KinderClose(session, "familia@example.com", "secreto", **kwargs)
+
+
+class ParserTests(unittest.TestCase):
+    def test_record_is_normalized(self):
+        record = parse_record(ficha(), "123", MADRID)
+        # Laravel envía la fecha en UTC: medianoche de Madrid es las 23:00 del día anterior.
+        self.assertEqual(record["fecha"], "2026-11-25")
+        self.assertEqual(record["url"], "https://app.kinderclose.com/familiar/alumno/123/ficha/456")
+        self.assertEqual(record["presencia"], {"ausente": False, "ausencia_justificada": False, "hora_entrada": "08:55", "hora_salida": None, "hora_entrada_tarde": None, "hora_salida_tarde": None})
+        self.assertEqual(record["comidas"], {"desayuno": "Todo", "primero": "Bastante", "segundo": "Poco", "postre": "Nada", "merienda": None})
+        self.assertEqual(record["sueno"], [{"desde": "12:17", "hasta": "12:40"}, {"desde": "14:00", "hasta": "14:10"}])
+        self.assertEqual(record["sueno_minutos"], 33)
+        self.assertEqual(record["deposiciones"], [{"tipo": "Deposición", "hora": "11:00", "info": "Normal"}, {"tipo": "Pis", "hora": None, "info": None}])
+        self.assertEqual(record["biberones"], [{"hora": "11:00", "cantidad": 180}])
+        self.assertEqual(record["recordatorios"], ["Pañales", "Crema"])
+        self.assertIsNone(record["control_esfinter"])
+
+    def test_absence_and_flags_accept_strings_and_booleans(self):
+        for value in (1, "1", True, "true"):
+            self.assertTrue(parse_record(ficha(ausente=value), "123")["presencia"]["ausente"])
+        for value in (0, "0", False, None, ""):
+            self.assertFalse(parse_record(ficha(ausente=value), "123")["presencia"]["ausente"])
+
+    def test_incomplete_or_missing_naps_give_unknown_sleep(self):
+        self.assertIsNone(parse_record(ficha(lista_dormir=[{"hora_desde": "12:11", "hora_hasta": None}]), "123")["sueno_minutos"])
+        self.assertIsNone(parse_record(ficha(lista_dormir=[]), "123")["sueno_minutos"])
+        self.assertEqual(parse_record(ficha(lista_dormir=[{"hora_desde": "23:50", "hora_hasta": "00:20"}]), "123")["sueno_minutos"], 30)
+
+    def test_missing_lists_and_unknown_values_do_not_fail(self):
+        record = parse_record({"fecha": "2026-11-25", "comida_desayuno": 9, "lista_dormir": None, "recordatorios": None}, "123")
+        self.assertIsNone(record["url"])
+        self.assertIsNone(record["comidas"]["desayuno"])
+        self.assertEqual((record["sueno"], record["deposiciones"], record["biberones"], record["recordatorios"]), ([], [], [], []))
+
+    def test_record_without_valid_date_is_rejected(self):
+        with self.assertRaises(ParseError):
+            parse_record(ficha(fecha="mañana"), "123")
+
+    def test_time_and_date_formats(self):
+        self.assertEqual(parse_time("8:05"), "08:05")
+        self.assertEqual(parse_time("08:05:59"), "08:05")
+        self.assertEqual(parse_time("2026-07-01T06:30:00Z", MADRID), "08:30")  # horario de verano
+        self.assertIsNone(parse_time("25:00"))
+        self.assertIsNone(parse_time("--"))
+        self.assertEqual(parse_date("2026-11-25"), date(2026, 11, 25))
+        self.assertEqual(parse_date("2026-11-25 00:00:00"), date(2026, 11, 25))
+        self.assertEqual(parse_date("2026-11-24T23:00:00Z", timezone.utc), date(2026, 11, 24))
+        self.assertIsNone(parse_date(None))
+
+    def test_pupils(self):
+        pupils = parse_pupils(PUPILS)
+        self.assertEqual(pupils["123"], {"id": "123", "nombre": "Alumno", "nombre_completo": "Alumno De Prueba", "activo": True})
+        self.assertFalse(pupils["124"]["activo"])
+        with self.assertRaises(ParseError):
+            parse_pupils({"error": "x"})
 
 
 class ClientTests(unittest.IsolatedAsyncioTestCase):
-    async def test_fetch_logs_in_and_parses_records(self):
+    async def test_fetch_logs_in_once_and_sends_token(self):
         session = FakeSession(routes())
-        async with KinderClose(session, "user", "password") as client:
-            result = await client.fetch("123")
+        stored = []
+        async with client(session, on_token=lambda *args: stored.append(args)) as api:
+            result = await api.fetch("123", today=TODAY, tz=MADRID)
+            await api.fetch("123", today=TODAY, tz=MADRID)
         self.assertEqual(result["alumno_id"], "123")
-        self.assertEqual(result["fichas"][0]["fecha"], "2026-10-07")
-        self.assertEqual(session.posts()[0][2]["data"], {"_token": "csrf", "email": "user", "password": "password"})
+        self.assertEqual(result["alumno"], "Alumno")
+        self.assertEqual(result["ficha"]["fecha"], "2026-11-25")
+        self.assertEqual(stored, [("tok-1", 77)])
+        method, url, kwargs = session.calls[0]
+        self.assertEqual((method, url), ("POST", API + "/auth/login"))
+        self.assertEqual(kwargs["json"], {"email": "familia@example.com", "password": "secreto", "provider": 1, "deviceName": "Home Assistant", "deviceType": 1, "appVersion": None})
+        # Listado de alumnos solo en la primera consulta; después, una petición por consulta.
+        self.assertEqual(session.paths()[1:], ["GET /api/v3/familiar/alumno", "GET /api/v3/familiar/alumno/123/ficha/null", "GET /api/v3/familiar/alumno/123/ficha/null"])
         for _, _, kwargs in session.calls:
             self.assertFalse(kwargs["allow_redirects"])
             self.assertEqual(kwargs["timeout"].total, 30)
+        for _, _, kwargs in session.calls[1:]:
+            self.assertEqual(kwargs["headers"]["token"], "tok-1")
+            self.assertEqual(kwargs["params"]["device_id"], "77")
         self.assertTrue(session.closed)
 
-    async def test_pupil_can_be_resolved_by_name(self):
+    async def test_stored_token_skips_login(self):
         session = FakeSession(routes())
-        result = await KinderClose(session, "user", "password").fetch(pupil_name="hermano  DE prueba")
-        self.assertEqual(result["alumno_id"], "124")
+        await client(session, token="guardado", device_id=5).fetch("123", today=TODAY)
+        self.assertNotIn("POST /api/v3/auth/login", session.paths())
+        self.assertEqual(session.calls[0][2]["headers"]["token"], "guardado")
 
-    async def test_invalid_credentials_raise_authentication_error_and_close(self):
-        session = FakeSession(routes(**{"POST /auth/login": FakeResponse('<input name="password">')}))
-        with self.assertRaises(AuthenticationError):
-            async with KinderClose(session, "user", "bad") as client:
-                await client.fetch("123")
-        self.assertTrue(session.closed)
+    async def test_expired_token_logs_in_again_once(self):
+        session = FakeSession(routes({"GET /familiar/alumno": [FakeResponse(status=401), FakeResponse(PUPILS)]}))
+        stored = []
+        result = await client(session, token="viejo", device_id=5, on_token=lambda *a: stored.append(a)).fetch("123", today=TODAY, tz=MADRID)
+        self.assertEqual(result["ficha"]["fecha"], "2026-11-25")
+        self.assertEqual(stored, [("tok-1", 77)])
+        self.assertEqual(session.paths().count("POST /api/v3/auth/login"), 1)
 
-    async def test_unrelated_pupil_is_rejected(self):
-        session = FakeSession(routes())
-        with self.assertRaisesRegex(PupilNotFound, "no aparece"):
-            await KinderClose(session, "user", "password").fetch("999")
-
-    async def test_pupil_without_records_raises_no_records(self):
-        session = FakeSession(routes(**{"GET /familiar/alumno/123": FakeResponse("")}))
-        with self.assertRaises(NoRecords):
-            await KinderClose(session, "user", "password").fetch("123")
-
-    async def test_login_form_without_token_value_is_rejected_before_posting(self):
-        session = FakeSession(routes(**{"GET /auth/login": FakeResponse('<input name="_token">')}))
-        with self.assertRaises(ParseError):
-            await KinderClose(session, "user", "password").fetch("123")
-        self.assertEqual(session.methods(), ["GET"])
-
-    async def test_html_is_parsed_outside_the_event_loop(self):
-        """Analizar HTML es costoso: nunca debe bloquear el bucle de Home Assistant."""
-        loop_thread = threading.get_ident()
-        parse_threads = []
-        real_soup = client_module.BeautifulSoup
-
-        def recording_soup(*args, **kwargs):
-            parse_threads.append(threading.get_ident())
-            return real_soup(*args, **kwargs)
-
-        with patch.object(client_module, "BeautifulSoup", recording_soup):
-            await KinderClose(FakeSession(routes()), "user", "password").fetch("123")
-        # Formulario de acceso, respuesta del login, listado, perfil y una ficha.
-        self.assertEqual(len(parse_threads), 5)
-        self.assertNotIn(loop_thread, parse_threads)
-
-
-class NetworkErrorTests(unittest.IsolatedAsyncioTestCase):
-    async def test_oversized_response_is_rejected(self):
-        session = FakeSession(routes(**{"GET /auth/login": FakeResponse("x" * (MAX_RESPONSE_BYTES + 1))}))
-        with self.assertRaisesRegex(ParseError, "tamaño permitido"):
-            await KinderClose(session, "user", "password").fetch("123")
-        self.assertEqual(session.methods(), ["GET"])
-
-    async def test_compressed_response_limit_applies_after_decompression(self):
-        async def handler(request):
-            return web.Response(body=gzip.compress(b"x" * (MAX_RESPONSE_BYTES + 1)), headers={"Content-Encoding": "gzip"})
-
-        app = web.Application()
-        app.router.add_get("/", handler)
-        runner = web.AppRunner(app)
-        await runner.setup()
-        self.addAsyncCleanup(runner.cleanup)
-        site = web.TCPSite(runner, "127.0.0.1", 0)
-        await site.start()
-        port = runner.addresses[0][1]
-        async with aiohttp.ClientSession() as session:
-            client = KinderClose(session, "user", "password")
-            client._check_url = MagicMock()
-            with self.assertRaisesRegex(ParseError, "tamaño permitido"):
-                await client._request("GET", f"http://127.0.0.1:{port}/")
-
-    async def test_network_errors_become_cannot_connect(self):
-        for error in (aiohttp.ClientConnectionError(), TimeoutError()):
-            with self.subTest(error=type(error).__name__):
-                session = FakeSession(routes(**{"GET /auth/login": error}))
-                with self.assertRaises(CannotConnect):
-                    await KinderClose(session, "user", "password").fetch("123")
-
-    async def test_http_error_becomes_cannot_connect(self):
-        session = FakeSession(routes(**{"GET /familiar/alumno": FakeResponse(status=500)}))
+    async def test_token_rejected_right_after_login_is_a_connection_error(self):
+        session = FakeSession(routes({"GET /familiar/alumno": FakeResponse(status=401)}))
         with self.assertRaises(CannotConnect):
-            await KinderClose(session, "user", "password").fetch("123")
+            await client(session).fetch("123", today=TODAY)
+        # Inicio de sesión inicial y una única renovación; no hay bucle de reintentos.
+        self.assertEqual(session.paths().count("POST /api/v3/auth/login"), 2)
 
+    async def test_concurrent_expiry_logs_in_once(self):
+        session = FakeSession(routes({"GET /familiar/alumno/123/ficha/null": [FakeResponse(status=401), FakeResponse(status=401), FakeResponse(ficha())]}))
+        api = client(session, token="viejo", device_id=5)
+        api._pupils, api._pupils_at = parse_pupils(PUPILS), datetime.now(timezone.utc)
+        results = await asyncio.gather(api.fetch("123", today=TODAY), api.fetch("123", today=TODAY))
+        self.assertTrue(all(r["ficha"] for r in results))
+        self.assertEqual(session.paths().count("POST /api/v3/auth/login"), 1)
 
-class SessionReuseTests(unittest.IsolatedAsyncioTestCase):
-    async def test_second_fetch_reuses_session_without_sending_password(self):
-        session = FakeSession(routes())
-        client = KinderClose(session, "user", "password")
-        await client.fetch("123")
-        await client.fetch("123")
-        self.assertEqual(len(session.posts()), 1)
-        self.assertFalse(session.closed)
+    async def test_invalid_credentials(self):
+        for status in (401, 422):
+            with self.subTest(status=status):
+                with self.assertRaises(AuthenticationError):
+                    await client(FakeSession(routes({"POST /auth/login": FakeResponse({"error": {}}, status=status)}))).pupils()
+        with self.assertRaises(AuthenticationError):
+            await KinderClose(FakeSession(routes()), "", "").pupils()
 
-    async def test_simultaneous_fetches_of_two_pupils_share_one_login(self):
-        session = FakeSession(routes())
-        client = KinderClose(session, "user", "password")
-        first, second = await asyncio.gather(client.fetch("123"), client.fetch("124"))
-        self.assertEqual((first["alumno_id"], second["alumno_id"]), ("123", "124"))
-        self.assertEqual(len(session.posts()), 1)
+    async def test_login_without_token_is_a_parse_error(self):
+        with self.assertRaises(ParseError):
+            await client(FakeSession(routes({"POST /auth/login": FakeResponse({"userId": 1})}))).pupils()
 
-    async def test_expired_session_logs_in_again_once(self):
-        session = FakeSession(routes(**{"GET /familiar/alumno": [FakeResponse(LISTING), expired(), FakeResponse(LISTING)]}))
-        client = KinderClose(session, "user", "password")
-        await client.fetch("123")
-        result = await client.fetch("123")
-        self.assertEqual(result["alumno_id"], "123")
-        self.assertEqual(len(session.posts()), 2)
-        session.cookie_jar.clear.assert_called()
+    async def test_network_errors_and_http_errors(self):
+        for response in (aiohttp.ClientConnectionError(), TimeoutError(), FakeResponse(status=500), FakeResponse(status=429), FakeResponse(status=302)):
+            with self.subTest(response=response):
+                with self.assertRaises(CannotConnect):
+                    await client(FakeSession(routes({"GET /familiar/alumno": response})), token="t", device_id=1).pupils()
 
-    async def test_simultaneous_expiry_renews_the_session_only_once(self):
-        session = FakeSession(routes(**{"GET /familiar/alumno": [FakeResponse(LISTING), expired(), expired(), FakeResponse(LISTING)]}))
-        client = KinderClose(session, "user", "password")
-        await client.fetch("123")
-        await asyncio.gather(client.fetch("123"), client.fetch("124"))
-        self.assertEqual(len(session.posts()), 2)
+    async def test_invalid_json_and_oversized_responses(self):
+        for response in (FakeResponse(raw=b"<html>"), FakeResponse(raw=b"[" + b" " * MAX_RESPONSE_BYTES + b"]")):
+            with self.subTest(size=len(response.body)):
+                with self.assertRaises(ParseError):
+                    await client(FakeSession(routes({"GET /familiar/alumno": response})), token="t", device_id=1).pupils()
 
-    async def test_session_that_keeps_expiring_is_not_retried_forever(self):
-        session = FakeSession(routes(**{"GET /familiar/alumno": expired()}))
-        with self.assertRaises(SessionExpired):
-            await KinderClose(session, "user", "password").fetch("123")
-        self.assertEqual(len(session.posts()), 2)
+    async def test_wrapped_responses_are_accepted(self):
+        session = FakeSession(routes({"GET /familiar/alumno": FakeResponse({"data": PUPILS})}))
+        self.assertIn("123", await client(session, token="t", device_id=1).pupils())
 
-    async def test_close_forces_new_login(self):
-        session = FakeSession(routes())
-        client = KinderClose(session, "user", "password")
-        await client.fetch("123")
-        await client.close()
-        await client.fetch("123")
-        self.assertEqual(len(session.posts()), 2)
+    async def test_unknown_or_invalid_pupil(self):
+        for pupil_id in ("999", "../auth", ""):
+            with self.subTest(pupil_id=pupil_id):
+                with self.assertRaises(PupilNotFound):
+                    await client(FakeSession(routes()), token="t", device_id=1).fetch(pupil_id, today=TODAY)
+        with self.assertRaises(PupilNotFound):
+            await client(FakeSession(routes({"GET /familiar/alumno/123/ficha/null": FakeResponse(status=403)})), token="t", device_id=1).fetch("123", today=TODAY)
 
+    async def test_looks_back_to_the_latest_record_and_remembers_past_days(self):
+        friday = TODAY - timedelta(days=4)
+        session = FakeSession(routes({
+            "GET /familiar/alumno/123/ficha/null": FakeResponse(status=404),
+            f"GET /familiar/alumno/123/ficha/null?fecha={TODAY - timedelta(days=1)}": FakeResponse(None),
+            f"GET /familiar/alumno/123/ficha/null?fecha={TODAY - timedelta(days=2)}": FakeResponse({"id": None, "fecha": "2026-11-23"}),
+            f"GET /familiar/alumno/123/ficha/null?fecha={friday}": FakeResponse(ficha(fecha=friday.isoformat())),
+        }))
+        api = client(session, token="t", device_id=1)
+        first = await api.fetch("123", today=TODAY)
+        self.assertEqual(first["ficha"]["fecha"], friday.isoformat())
+        before = len(session.calls)
+        second = await api.fetch("123", today=TODAY)
+        self.assertEqual(second["ficha"], first["ficha"])
+        self.assertEqual(session.paths()[before:], ["GET /api/v3/familiar/alumno/123/ficha/null"])
 
-class RedirectTests(unittest.IsolatedAsyncioTestCase):
-    async def test_same_host_redirect_is_followed_as_get(self):
-        session = FakeSession(routes())
-        await KinderClose(session, "user", "password").fetch("123")
-        method, url, kwargs = session.calls[2]
-        self.assertEqual((method, url), ("GET", BASE + "/inicio"))
-        self.assertIsNone(kwargs["data"])
+    async def test_no_record_in_the_window_gives_none(self):
+        session = FakeSession(routes({"GET /familiar/alumno/123/ficha/null": FakeResponse(status=404)}))
+        result = await client(session, token="t", device_id=1).fetch("123", today=TODAY, lookback=3)
+        self.assertIsNone(result["ficha"])
+        self.assertEqual(len([p for p in session.paths() if "/ficha/" in p]), 3)
 
-    async def test_password_is_never_sent_to_foreign_host_on_307(self):
-        session = FakeSession(routes(**{"POST /auth/login": FakeResponse(status=307, location="https://evil.example/collect")}))
-        with self.assertRaisesRegex(ValueError, "no válido"):
-            await KinderClose(session, "user", "password").fetch("123")
-        self.assertEqual(session.methods(), ["GET", "POST"])
-
-    async def test_get_redirect_to_foreign_host_is_rejected(self):
-        session = FakeSession(routes(**{"GET /familiar/alumno": FakeResponse(status=302, location="https://evil.example/familiar/alumno")}))
-        with self.assertRaisesRegex(ValueError, "no válido"):
-            await KinderClose(session, "user", "password").fetch("123")
-        self.assertEqual(len(session.calls), 4)
-
-    async def test_https_downgrade_is_rejected(self):
-        session = FakeSession(routes(**{"GET /auth/login": FakeResponse(status=301, location="http://app.kinderclose.com/auth/login")}))
-        with self.assertRaisesRegex(ValueError, "no válido"):
-            await KinderClose(session, "user", "password").fetch("123")
-
-    async def test_redirect_loop_is_bounded(self):
-        session = FakeSession(routes(**{"GET /auth/login": FakeResponse(status=302, location="/auth/login")}))
-        with self.assertRaisesRegex(ValueError, "demasiadas redirecciones"):
-            await KinderClose(session, "user", "password").fetch("123")
-        self.assertEqual(len(session.calls), KinderClose.MAX_REDIRECTS + 1)
+    async def test_logout_ignores_errors(self):
+        session = FakeSession({"POST /auth/logout": aiohttp.ClientConnectionError()})
+        api = client(session, token="t", device_id=1)
+        await api.logout()
+        self.assertIsNone(api.token)
+        await api.logout()
+        self.assertEqual(len(session.calls), 1)
 
 
 if __name__ == "__main__":

@@ -4,12 +4,17 @@
     "step": {
       "user": {
         "title": "Connect to KinderClose",
-        "description": "Enter KinderClose credentials and a pupil ID or full name. No Home Assistant URL or token is needed.",
+        "description": "Enter the email and password you use in the KinderClose app. The pupils of the account are detected automatically.",
         "data": {
           "username": "KinderClose email",
-          "password": "KinderClose password",
-          "pupil_id": "Pupil ID (recommended)",
-          "pupil_name": "Full pupil name (if no ID is provided)"
+          "password": "KinderClose password"
+        }
+      },
+      "pupil": {
+        "title": "Choose the pupil",
+        "description": "This account has several pupils. Choose one; repeat the setup to add the others.",
+        "data": {
+          "pupil_id": "Pupil"
         }
       },
       "reauth_confirm": {
@@ -24,12 +29,12 @@
     "error": {
       "invalid_auth": "Invalid KinderClose credentials.",
       "cannot_connect": "Unable to connect to KinderClose.",
-      "invalid_pupil": "Pupil not found in this account. Check the ID or full name.",
-      "no_records": "The pupil has no records yet. Try again once the school has published one.",
+      "invalid_pupil": "The configured pupil is not in this account.",
+      "no_pupils": "This account has no active pupils.",
       "unknown": "Unexpected error. Check the Home Assistant log."
     },
     "abort": {
-      "already_configured": "This pupil is already configured.",
+      "already_configured": "All the pupils of this account are already configured.",
       "reauth_successful": "Credentials updated."
     }
   },
@@ -67,6 +72,12 @@
       },
       "deposiciones": {
         "name": "Bowel movements"
+      },
+      "biberones": {
+        "name": "Bottles"
+      },
+      "recordatorios": {
+        "name": "Reminders"
       }
     }
   }

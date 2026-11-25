@@ -6,35 +6,52 @@ KinderClose es una integración personalizada de Home Assistant, distribuida con
 
 ```mermaid
 flowchart LR
-    KC[Web de KinderClose] -->|HTTPS y HTML| Client[Cliente y parser]
-    Client -->|fichas normalizadas| Coordinator[Coordinador por alumno]
+    KC[API JSON de KinderClose v3] -->|HTTPS, token de dispositivo| Client[Cliente y normalización]
+    Client -->|ficha normalizada| Coordinator[Coordinador por alumno]
     Coordinator -->|estados y atributos| Sensors[Sensores de Home Assistant]
     Sensors --> Recorder[Historial y copias según configuración de HA]
 ```
 
-El flujo de configuración comprueba las credenciales y resuelve el alumno. El coordinador consulta cada 15 minutos con un cliente `aiohttp` asíncrono. El análisis del HTML con BeautifulSoup se hace en funciones puras que el cliente ejecuta en un hilo (`asyncio.to_thread`), de modo que ni la red ni el análisis bloquean el bucle de Home Assistant. Las entradas con la misma cuenta comparten cliente, sesión e inicio de sesión (`account.py`); un candado evita inicios de sesión simultáneos y, si la sesión caduca, se renueva una sola vez. La sesión tiene sus propias cookies, separadas de la sesión compartida de Home Assistant, y se cierra cuando se descarga la última entrada que la usa. Las redirecciones se limitan al mismo origen HTTPS.
+La fuente es la API JSON que usa la app móvil oficial, obtenida por ingeniería inversa y descrita en [api.md](api.md). No es una API pública: KinderClose puede cambiarla sin aviso. Las pruebas usan respuestas simuladas; `scripts/probe_api.py` permite comprobar la API real.
 
-La fuente es HTML de la web de KinderClose, no una API pública documentada. Los cambios de la web pueden romper la extracción; el parser rechaza páginas sin los paneles esenciales. Las pruebas usan respuestas simuladas, no verifican la web real.
+- **Configuración.** El flujo inicia sesión con el correo y la contraseña, obtiene los alumnos de la cuenta y ofrece los activos que aún no están configurados. Si solo queda uno, se crea directamente. El token de dispositivo obtenido se guarda en la entrada.
+- **Actualización.** El coordinador consulta cada 15 minutos con un cliente `aiohttp` asíncrono. Normalmente es **una única petición JSON**: la ficha de hoy. La lista de alumnos se comprueba al arrancar y, después, cada 6 horas. El JSON ocupa pocos KiB y se procesa en el bucle de eventos sin bloquearlo; ya no hay análisis de HTML ni dependencias externas.
+- **Última ficha.** Si hoy no hay ficha, el cliente retrocede día a día hasta 7 días (fines de semana y puentes). Las fichas de días pasados se recuerdan en memoria, así que cada día solo se piden una vez. Si no hay ninguna en ese periodo (por ejemplo, en vacaciones), los sensores quedan desconocidos, no como errores.
+- **Cuenta compartida.** Las entradas con la misma cuenta comparten cliente y token (`account.py`). Un candado evita inicios de sesión simultáneos. Si KinderClose rechaza el token, se inicia sesión una sola vez y el nuevo token se guarda en todas las entradas de la cuenta. Si se rechazan las credenciales, Home Assistant pide reautenticación.
+- **Red.** La sesión HTTP es propia y no guarda cookies, separada de la compartida de Home Assistant, y se cierra al descargar la última entrada que la usa. No se siguen redirecciones y se rechazan respuestas de más de 1 MiB.
+- **Baja.** Al eliminar la última entrada que usa un token, se cierra la sesión de ese dispositivo en KinderClose.
 
 ## Datos y semántica
 
-El cliente obtiene los enlaces de fichas del perfil, elimina duplicados y consulta hasta los primeros cinco en el orden ofrecido por la página; después ordena esas fichas por fecha descendente. Por tanto, la ficha presentada es la más reciente **entre las consultadas**: depende de que KinderClose ofrezca primero las fichas más recientes. No se consulta el historial completo.
+`fetch` devuelve `alumno_id`, `alumno` (nombre de pila), `consultado_en` (UTC, ISO 8601) y `ficha`, que es `null` si no hay ninguna ficha en los últimos 7 días. La ficha normalizada tiene esta estructura:
 
-| Campo interno | Significado y tratamiento |
+| Campo | Significado y tratamiento |
 | --- | --- |
-| `alumno_id` | Identificador del alumno, también usado en el dispositivo y los identificadores de entidades. |
-| `consultado_en` | Momento de consulta en UTC, en ISO 8601. |
-| `fichas` | Lista no vacía de fichas consultadas, ordenadas por fecha descendente. |
-| `fecha`, `url` | Fecha ISO de la ficha y enlace de origen. No representan necesariamente el día actual. La fecha sale del `defaultDate` del calendario, o de la única fecha de los encabezados, o de la única fecha del texto; si es ambigua, la ficha se rechaza. |
-| `presencia`, `comidas` | Valores de texto extraídos de los paneles; los campos vacíos o `--` se normalizan a `null`. |
-| `sueno` | Sesiones con `desde` y `hasta`; si faltan horas, pueden ser `null`. |
-| `sueno_minutos` | Suma de sesiones completas en minutos; `null` si no hay sesiones o alguna está incompleta. Se admite el cruce de medianoche. |
-| `deposiciones` | Lista de objetos `tipo`, `hora` e `info`; sus campos pueden ser `null`. |
+| `fecha`, `url` | Fecha ISO de la ficha, en la zona horaria de Home Assistant, y enlace a la ficha en la web. No es necesariamente el día actual. |
+| `presencia` | `ausente` y `ausencia_justificada` (booleanos); `hora_entrada`, `hora_salida`, `hora_entrada_tarde` y `hora_salida_tarde` en `HH:MM` o `null`. |
+| `comidas` | `desayuno`, `primero`, `segundo`, `postre` y `merienda`: `Todo`, `Bastante`, `Poco`, `Nada` o `null`. |
+| `sueno` | Siestas con `desde` y `hasta` (`HH:MM` o `null`). |
+| `sueno_minutos` | Suma de las siestas en minutos; `null` si no hay siestas o alguna está incompleta. Admite el cruce de medianoche. |
+| `deposiciones` | Lista de `tipo` (`Deposición` o `Pis`), `hora` e `info`. |
+| `biberones` | Lista de `hora` y `cantidad` (ml). |
+| `recordatorios` | Textos de lo que hay que llevar: `Toallitas`, `Pañales`, `Agua`, `Muda` o un texto personalizado del centro. |
+| `control_esfinter` | `Sí`, `No` o `null`. |
 
-Cada sensor toma su estado de la primera ficha. El sensor de asistencia interpreta `Sí` o `Si` en `ausente` como ausencia y `No` como presencia. El sensor de deposiciones cuenta los elementos de la lista; una lista vacía da cero. La ausencia de sesiones de sueño da un valor desconocido, no cero. Los atributos comunes son `fecha_ficha` y `url_ficha`; el sensor `ultima_ficha` expone las fichas consultadas y el momento de consulta, y los sensores de sueño y deposiciones exponen sus detalles.
+| Sensor | Estado | Atributos propios |
+| --- | --- | --- |
+| `ultima_ficha` | Fecha de la ficha (`date`) | `ficha` (completa), `consultado_en` |
+| `asistencia` | `presente` o `ausente` | `ausencia_justificada` (solo si está ausente) |
+| `entrada`, `salida` | `HH:MM` | `entrada_tarde`, `salida_tarde` |
+| `desayuno`, `primero`, `segundo`, `postre`, `merienda` | Texto de la comida | — |
+| `sueno` | Minutos (duración) | `sesiones` |
+| `deposiciones` | Número | `detalles`, `control_esfinter` |
+| `biberones` | Número | `detalles` |
+| `recordatorios` | Número | `elementos` |
 
-Los nombres visibles se traducen con `translation_key`; los `entity_id` se fijan explícitamente para que no dependan del idioma. Los identificadores, nombres, unidades y atributos son una interfaz para tarjetas y automatizaciones. Cualquier cambio requiere evaluar compatibilidad, pruebas y una guía de migración cuando corresponda. Véase [mantenimiento](maintenance.md).
+Todos los sensores tienen `fecha_ficha` y `url_ficha`. Si no hay ficha, los estados son desconocidos y esos atributos, `null`. Una lista vacía da cero; la falta de siestas da un sueño desconocido, no cero.
+
+Los nombres visibles se traducen con `translation_key`. Los `entity_id` (`sensor.kinderclose_<ID>_<clave>`) se fijan explícitamente para que no dependan del idioma. Los identificadores, nombres, unidades y atributos son una interfaz para tarjetas y automatizaciones. Cualquier cambio requiere evaluar la compatibilidad, añadir pruebas y, cuando corresponda, una guía de migración. Véase [mantenimiento](maintenance.md).
 
 ## Ciclo de vida y privacidad
 
-Las credenciales se guardan en los datos de la entrada de configuración de Home Assistant. Las respuestas y los atributos pueden contener datos sensibles de menores. Los atributos `fichas`, `sesiones`, `detalles`, `url_ficha` y `consultado_en` se excluyen del recorder (`_unrecorded_attributes`); los estados y `fecha_ficha` sí se registran. El almacenamiento y la retención dependen de la configuración de Home Assistant, sus integraciones y sus copias; no hay una política de borrado propia en este repositorio. Eliminar una integración o entidad no debe considerarse prueba de que se haya eliminado su historial o todas las copias. Revisa acceso, recorder, copias y recuperación en tu instalación. No uses datos reales en incidencias ni pruebas.
+Las credenciales y el token de dispositivo se guardan en los datos de la entrada de configuración de Home Assistant. Las respuestas y los atributos pueden contener datos sensibles de menores. Los atributos `ficha`, `sesiones`, `detalles`, `elementos`, `url_ficha` y `consultado_en` se excluyen del recorder (`_unrecorded_attributes`); los estados y `fecha_ficha` sí se registran. El almacenamiento y la retención dependen de la configuración de Home Assistant, sus integraciones y sus copias; este repositorio no tiene una política de borrado propia. Eliminar una integración o una entidad no prueba que se haya borrado su historial ni todas las copias. Revisa el acceso, el recorder, las copias y la recuperación en tu instalación. No uses datos reales en incidencias ni pruebas.

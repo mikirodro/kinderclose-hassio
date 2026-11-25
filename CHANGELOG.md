@@ -2,6 +2,32 @@
 
 Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/). La sección de cada versión se usa como notas de la release de GitHub.
 
+## [1.0.0]
+
+Versión mayor: la integración deja de analizar la web de KinderClose y usa la API JSON de la app móvil oficial. Revisa **Incompatibilidades** antes de actualizar.
+
+### Cambios
+
+- **API en lugar de HTML.** La API v3 que usa la app «KinderClose Familiar» se ha obtenido por ingeniería inversa de la propia app y se documenta en `docs/api.md`. Una consulta normal pasa de hasta siete páginas HTML (inicio de sesión, listado, perfil y cinco fichas) a **una petición JSON**. Desaparece la dependencia `beautifulsoup4`: la integración ya no instala paquetes.
+- **Sesión persistente.** Se inicia sesión una vez y el token de dispositivo se guarda en la entrada, así que los reinicios no vuelven a enviar la contraseña ni registran dispositivos nuevos en la cuenta. Si KinderClose rechaza el token, se inicia sesión de nuevo una sola vez. Al eliminar la integración se cierra la sesión de ese dispositivo.
+- **Configuración más sencilla.** Basta con el correo y la contraseña. La integración detecta los alumnos activos de la cuenta y deja elegir entre ellos, o crea la entrada directamente si solo hay uno sin configurar. Ya no hace falta conocer el ID ni escribir el nombre completo.
+- **Última ficha fiable.** Se pide la ficha del día. Si no hay, se busca la más reciente de los últimos 7 días, en lugar de depender del orden de los enlaces de la web. Las fechas y horas se interpretan en la zona horaria de Home Assistant. Las fichas de días anteriores se recuerdan en memoria y no se vuelven a pedir.
+- **Sin ficha no es un error.** Si no hay ninguna ficha en 7 días (vacaciones) o el alumno aún no tiene ninguna, los sensores quedan desconocidos en lugar de no disponibles, y se puede configurar igualmente.
+- **Nuevos sensores:** `biberones` (número de biberones, con hora y ml) y `recordatorios` (número de cosas que hay que llevar: pañales, toallitas, agua, muda o un texto del centro).
+- **Nuevos atributos:** `ausencia_justificada` en asistencia, `entrada_tarde` y `salida_tarde` para el turno de tarde, y `control_esfinter` en deposiciones.
+- Sesión HTTP sin cookies, sin redirecciones y con un límite de 1 MiB por respuesta. Un 429 (límite de peticiones) se trata como error temporal.
+- `scripts/probe_api.py` comprueba la API con una cuenta real mostrando solo la estructura de las respuestas.
+
+### Incompatibilidades
+
+- El atributo `fichas` de `ultima_ficha` (lista de hasta cinco fichas) se sustituye por `ficha`, con la última ficha completa. Las plantillas que usen `fichas[0]` deben usar `ficha`.
+- En la ficha normalizada, `presencia.ausente` pasa de texto (`Sí`/`No`) a booleano. El estado del sensor `asistencia` no cambia (`presente`/`ausente`).
+- Las comidas toman los textos de la app (`Todo`, `Bastante`, `Poco`, `Nada`). Si el centro usaba otros textos en la web, los estados pueden cambiar.
+- Las horas de las siestas y de las deposiciones se dan siempre en `HH:MM`.
+- La opción «nombre completo del alumno» desaparece del formulario. Las entradas existentes siguen funcionando sin volver a configurarlas: conservan sus credenciales y su ID, y obtienen el token en la primera consulta.
+
+No cambian los `entity_id` (`sensor.kinderclose_<ID>_<clave>`) ni los estados de los sensores existentes, salvo los matices de arriba.
+
 ## [0.5.4]
 
 ### Documentación
