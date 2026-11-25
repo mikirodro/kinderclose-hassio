@@ -6,7 +6,7 @@ Gracias por ayudar a mejorar KinderClose.
 - Para vulnerabilidades, sigue [SECURITY.md](SECURITY.md); no publiques los detalles en una incidencia.
 - No subas credenciales, tokens, cookies, capturas, identificadores de alumnos ni fichas o respuestas reales de la API. Revisa los logs antes de compartirlos.
 - Haz cambios pequeños en una rama y explica en el pull request el problema, la solución y cómo la has probado.
-- Ejecuta las pruebas indicadas en el [README](README.md#pruebas-para-desarrollo). La validación de GitHub Actions también comprueba el manifiesto con hassfest.
+- Ejecuta las pruebas indicadas en el [README](README.md#desarrollo). La validación de GitHub Actions también comprueba el manifiesto con hassfest.
 - Usa ejemplos y pruebas con datos inventados. Conserva la compatibilidad de los sensores y documenta cualquier cambio que afecte a tarjetas o automatizaciones.
 
 Consulta también el [mapa del repositorio y la guía de mantenimiento](docs/maintenance.md) y el [contrato de datos](docs/architecture.md).

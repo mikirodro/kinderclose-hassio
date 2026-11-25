@@ -11,12 +11,13 @@
 | `tests/ha/` | Pruebas con Home Assistant (`pytest-homeassistant-custom-component`): configuración, reautenticación, sensores y descarga. |
 | `.github/workflows/validate.yaml` | Ruff, pruebas (versión mínima y versión fijada de Home Assistant), hassfest y validación del Marketplace (`hacs/action`, sin comprobaciones ignoradas). Los jobs `tests` y `hassfest` son checks obligatorios de `main`. |
 | `.github/workflows/release.yaml` | Publicación manual: valida el commit y crea el tag y la release. |
+| `README.md`, `README.en.md` | Documentación de uso en español (la que muestran GitHub, el Marketplace y HACS) y su traducción al inglés. Cualquier cambio se hace en los dos; si difieren, manda la versión en español. |
 | `CHANGELOG.md` | Cambios por versión; su sección es el texto de la release. |
 | `hacs.json` | Metadatos y versión mínima declarada para el Marketplace y HACS. El Marketplace lo lee de la raíz en cada versión que instala. |
 | `requirements.txt`, `requirements_test.txt` | Dependencias del cliente y de la CI. La integración no tiene dependencias de ejecución: `aiohttp` lo aporta Home Assistant. |
 | `assets/` | Recursos para documentación; no es el directorio de la integración. |
 
-Para preparar el entorno y ejecutar las pruebas consulta el [README](../README.md#pruebas-para-desarrollo). Las pruebas de `tests/ha` arrancan un Home Assistant de pruebas con respuestas simuladas, pero no comprueban la API real ni una instalación completa. Hassfest valida metadatos, no el funcionamiento completo. Los rangos de dependencias permiten versiones distintas entre instalaciones; un resultado local no garantiza que se haya probado toda la matriz de versiones.
+Para preparar el entorno y ejecutar las pruebas consulta el [README](../README.md#desarrollo). Las pruebas de `tests/ha` arrancan un Home Assistant de pruebas con respuestas simuladas, pero no comprueban la API real ni una instalación completa. Hassfest valida metadatos, no el funcionamiento completo. Los rangos de dependencias permiten versiones distintas entre instalaciones; un resultado local no garantiza que se haya probado toda la matriz de versiones.
 
 La CI ejecuta pruebas simuladas con Home Assistant 2025.1.0, el mínimo de `hacs.json`, y con la versión que fija `pytest-homeassistant-custom-component`. Ese paquete va unido a una versión concreta de Home Assistant: no se puede instalar otra encima (con 2026.11 falla al importar `httpx`). Para probar una versión nueva, espera a que Dependabot proponga el paquete correspondiente. Antes de publicar, prueba además la instalación desde el Marketplace (y por HACS en una versión anterior a 2026.11), configuración, actualización, reautenticación y descarga en entornos aislados. Documenta los resultados; si el mínimo no funciona, fija la primera versión realmente compatible y comunica el impacto. Para probar KinderClose usa una cuenta de desarrollo autorizada y nunca guardes respuestas reales ni credenciales en artefactos.
 
@@ -40,7 +41,7 @@ Desde Home Assistant 2026.11 el Marketplace (**Ajustes → Marketplace**) sustit
 - Debe existir una release publicada en GitHub; un tag sin release no basta. El Marketplace ofrece la última release y permite elegir anteriores: no borres releases antiguas.
 - Si una versión necesita una Home Assistant más reciente, sube `homeassistant` en `hacs.json`; el Marketplace no ofrece esa release a instalaciones más antiguas.
 - Las imágenes de marca están en `custom_components/kinderclose/brand/` (icono de 256 px y 512 px en @2x; logo con lado corto de 128 a 256 px y de 256 a 512 px en @2x).
-- En el README, las secciones entre `<!-- ha-marketplace:exclude-start -->` y `<!-- ha-marketplace:exclude-end -->` no se muestran en el Marketplace.
+- En los README, las secciones entre `<!-- ha-marketplace:exclude-start -->` y `<!-- ha-marketplace:exclude-end -->` no se muestran en el Marketplace.
 
 Para aparecer en el catálogo por defecto, el propietario envía desde su cuenta personal un pull request a `hacs/default` que añade `mikirodro/kinderclose-hassio` al archivo `integration`, en orden alfabético y con la plantilla completa. El catálogo exige `hacs/action` sin comprobaciones ignoradas y hassfest en verde.
 
