@@ -32,8 +32,11 @@ jobs:
           if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
             echo "::error::La versión de manifest.json no es X.Y.Z: $version"; exit 1
           fi
-          if git ls-remote --exit-code --tags origin "refs/tags/$version" >/dev/null; then
-            echo "::error::El tag $version ya existe. Sube la versión en manifest.json y CHANGELOG.md."; exit 1
+          # Un tag en este mismo commit sin release es un intento anterior que falló al
+          # publicar: se reutiliza. En otro commit, la versión ya está usada.
+          tag_sha=$(git ls-remote --tags origin "refs/tags/$version" | cut -f1)
+          if [[ -n "$tag_sha" && "$tag_sha" != "$GITHUB_SHA" ]]; then
+            echo "::error::El tag $version ya existe en otro commit. Sube la versión en manifest.json y CHANGELOG.md."; exit 1
           fi
           if gh release view "$version" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             echo "::error::La release $version ya existe."; exit 1
@@ -64,5 +67,10 @@ jobs:
           VERSION: ${{ needs.prepare.outputs.version }}
         run: |
           .github/scripts/release-notes.sh "$VERSION" > "$RUNNER_TEMP/notes.md"
-          gh release create "$VERSION" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
+          # El tag se crea antes que la release: con releases inmutables, crear ambos en
+          # la misma llamada ha devuelto HTTP 500. --verify-tag impide que gh cree otro.
+          if ! git ls-remote --exit-code --tags origin "refs/tags/$VERSION" >/dev/null; then
+            gh api "repos/$GITHUB_REPOSITORY/git/refs" -f ref="refs/tags/$VERSION" -f sha="$GITHUB_SHA" --silent
+          fi
+          gh release create "$VERSION" --repo "$GITHUB_REPOSITORY" --verify-tag \
             --title "KinderClose $VERSION" --notes-file "$RUNNER_TEMP/notes.md" --latest
