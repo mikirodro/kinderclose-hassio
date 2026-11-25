@@ -187,7 +187,7 @@ class ClientTests(unittest.IsolatedAsyncioTestCase):
     async def test_expired_token_logs_in_again_once(self):
         session = FakeSession(routes({"GET /familiar/alumno": [FakeResponse(status=401), FakeResponse(PUPILS)]}))
         stored = []
-        result = await client(session, token="viejo", device_id=5, on_token=lambda *a: stored.append(a)).fetch("123", today=TODAY)
+        result = await client(session, token="viejo", device_id=5, on_token=lambda *a: stored.append(a)).fetch("123", today=TODAY, tz=MADRID)
         self.assertEqual(result["ficha"]["fecha"], "2026-11-25")
         self.assertEqual(stored, [("tok-1", 77)])
         self.assertEqual(session.paths().count("POST /api/v3/auth/login"), 1)
